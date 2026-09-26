@@ -1,0 +1,198 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Anibalealvarezs\MailchimpHubDriver\Conversions;
+
+use Anibalealvarezs\ApiDriverCore\Classes\UniversalEntity;
+use Anibalealvarezs\ApiDriverCore\Conversions\UniversalEntityConverter;
+use Anibalealvarezs\ApiDriverCore\Enums\AssetCategory;
+use Doctrine\Common\Collections\ArrayCollection;
+
+class MailchimpConvert
+{
+    /**
+     * Converts Mailchimp lists/audiences into UniversalEntity objects.
+     */
+    public static function audiences(array $audiences, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($audiences, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => 'date_created',
+            'mapping' => [
+                'title' => 'name',
+                'category' => fn () => AssetCategory::IDENTITY->value,
+                'account_id' => fn () => $accountId,
+                'member_count' => fn ($r) => $r['stats']['member_count'] ?? 0,
+                'unsubscribe_count' => fn ($r) => $r['stats']['unsubscribe_count'] ?? 0,
+                'campaign_count' => fn ($r) => $r['stats']['campaign_count'] ?? 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Converts Mailchimp connected eCommerce stores into ChanneledStore entities.
+     */
+    public static function stores(array $stores, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($stores, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => 'created_at',
+            'mapping' => [
+                'title' => 'name',
+                'category' => fn () => AssetCategory::RESOURCE->value,
+                'account_id' => fn () => $accountId,
+                'domain' => fn ($r) => $r['domain'] ?? '',
+                'platform' => fn ($r) => $r['platform'] ?? 'custom',
+                'currency_code' => fn ($r) => $r['currency_code'] ?? 'USD',
+                'money_format' => fn ($r) => $r['money_format'] ?? '$',
+            ],
+        ]);
+    }
+
+    /**
+     * Converts Mailchimp campaigns into ChanneledCampaign entities.
+     */
+    public static function campaigns(array $campaigns, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($campaigns, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => 'send_time',
+            'mapping' => [
+                'category' => fn () => AssetCategory::CAMPAIGN->value,
+                'account_id' => fn () => $accountId,
+                'title' => fn ($r) => $r['settings']['title'] ?? ($r['id'] ?? ''),
+                'subject' => fn ($r) => $r['settings']['subject_line'] ?? '',
+                'type' => fn ($r) => $r['type'] ?? 'regular',
+                'status' => fn ($r) => $r['status'] ?? 'save',
+                'list_id' => fn ($r) => $r['recipients']['list_id'] ?? null,
+                'folder_id' => fn ($r) => $r['settings']['folder_id'] ?? null,
+                'template_id' => fn ($r) => $r['settings']['template_id'] ?? null,
+                'emails_sent' => fn ($r) => $r['emails_sent'] ?? 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Converts tracked CTA links into ChanneledLink (AssetCategory::UNIT) entities.
+     */
+    public static function links(array $urlsClicked, string $campaignId, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($urlsClicked, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => fn () => date('Y-m-d H:i:s'),
+            'mapping' => [
+                'category' => fn () => AssetCategory::UNIT->value,
+                'account_id' => fn () => $accountId,
+                'campaign_id' => fn () => $campaignId,
+                'url' => fn ($r) => $r['url'] ?? '',
+                'total_clicks' => fn ($r) => $r['total_clicks'] ?? 0,
+                'unique_clicks' => fn ($r) => $r['unique_clicks'] ?? 0,
+                'click_percentage' => fn ($r) => $r['click_percentage'] ?? 0.0,
+            ],
+        ]);
+    }
+
+    /**
+     * Converts campaign folders into ChanneledFolder entities.
+     */
+    public static function folders(array $folders, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($folders, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => fn () => date('Y-m-d H:i:s'),
+            'mapping' => [
+                'category' => fn () => AssetCategory::GROUPING->value,
+                'account_id' => fn () => $accountId,
+                'title' => fn ($r) => $r['name'] ?? '',
+                'count' => fn ($r) => $r['count'] ?? 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Converts templates into ChanneledTemplate entities.
+     */
+    public static function templates(array $templates, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($templates, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => 'date_created',
+            'mapping' => [
+                'category' => fn () => AssetCategory::RESOURCE->value,
+                'account_id' => fn () => $accountId,
+                'title' => fn ($r) => $r['name'] ?? '',
+                'type' => fn ($r) => $r['type'] ?? 'user',
+            ],
+        ]);
+    }
+
+    /**
+     * Converts raw recipient email activity events (opens, clicks, bounces) into ChanneledEvent entities.
+     */
+    public static function events(array $emailsActivity, string $campaignId, string $accountId): ArrayCollection
+    {
+        $flattened = [];
+        foreach ($emailsActivity as $item) {
+            $emailId = $item['email_id'] ?? '';
+            $activities = $item['activity'] ?? [];
+            foreach ($activities as $act) {
+                $flattened[] = [
+                    'campaign_id' => $campaignId,
+                    'account_id' => $accountId,
+                    'email_id' => $emailId,
+                    'action' => $act['action'] ?? 'open',
+                    'timestamp' => $act['timestamp'] ?? date('Y-m-d H:i:s'),
+                    'ip' => $act['ip'] ?? null,
+                    'url' => $act['url'] ?? null,
+                    'type' => $act['type'] ?? null,
+                ];
+            }
+        }
+
+        return UniversalEntityConverter::convert($flattened, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => fn ($r) => md5($r['campaign_id'] . ':' . $r['email_id'] . ':' . $r['action'] . ':' . $r['timestamp']),
+            'date_field' => 'timestamp',
+            'mapping' => [
+                'campaign_id' => 'campaign_id',
+                'account_id' => 'account_id',
+                'action' => 'action',
+                'identity_hash' => 'email_id',
+                'url' => 'url',
+                'bounce_type' => 'type',
+            ],
+        ]);
+    }
+
+    /**
+     * Converts connected store orders into ChanneledOrder entities.
+     */
+    public static function orders(array $orders, string $storeId, string $accountId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert($orders, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'id',
+            'date_field' => 'created_at',
+            'mapping' => [
+                'store_id' => fn () => $storeId,
+                'account_id' => fn () => $accountId,
+                'campaign_id' => fn ($r) => $r['campaign_id'] ?? null,
+                'total_amount' => fn ($r) => (float) ($r['order_total'] ?? 0.0),
+                'tax_total' => fn ($r) => (float) ($r['tax_total'] ?? 0.0),
+                'shipping_total' => fn ($r) => (float) ($r['shipping_total'] ?? 0.0),
+                'currency' => fn ($r) => $r['currency_code'] ?? 'USD',
+                'financial_status' => fn ($r) => $r['financial_status'] ?? 'paid',
+                'identity_hash' => fn ($r) => !empty($r['customer']['email_address'])
+                    ? md5(strtolower(trim($r['customer']['email_address'])))
+                    : ($r['customer']['id'] ?? ''),
+            ],
+        ]);
+    }
+}
