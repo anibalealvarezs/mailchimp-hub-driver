@@ -132,40 +132,14 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             return $currentConfig;
         }
 
-        // Ensure channel config exists (same pattern as other drivers)
-        if (!isset($currentConfig['channels']['mailchimp'])) {
-            $currentConfig['channels']['mailchimp'] = [];
-        }
-
-        $chanCfg = &$currentConfig['channels']['mailchimp'];
-
-        // Extract fields from root payload (same pattern as other drivers)
-        $chanCfg['enabled'] = $newData['enabled'] ?? ($chanCfg['enabled'] ?? true);
-        
-        if (isset($newData['cron_time'])) {
-            $chanCfg['cron_time'] = $newData['cron_time'];
-        }
-        if (isset($newData['granular_sync'])) {
-            $chanCfg['granular_sync'] = filter_var($newData['granular_sync'], FILTER_VALIDATE_BOOLEAN);
-        }
-        if (isset($newData['cache_history_range'])) {
-            $chanCfg['cache_history_range'] = $newData['cache_history_range'];
-        }
-        if (isset($newData['max_workers'])) {
-            $chanCfg['max_workers'] = (int)$newData['max_workers'];
-        }
-        if (isset($newData['calculate_synthetics'])) {
-            $chanCfg['calculate_synthetics'] = filter_var($newData['calculate_synthetics'], FILTER_VALIDATE_BOOLEAN);
-        }
-        if (isset($newData['accounts'])) {
-            $chanCfg['accounts'] = $newData['accounts'];
-        }
+        // Flat structure (same as YAML file) - merge root-level fields
+        $merged = array_merge($currentConfig, $newData);
 
         // Unpack audiences from assets.audiences to flat audiences
-        $chanCfg['audiences'] = $selectedAudiences;
-        unset($chanCfg['assets']);
+        $merged['audiences'] = $selectedAudiences;
+        unset($merged['assets']);
 
-        return $currentConfig;
+        return $merged;
     }
 
     public function validateAuthentication(): array
