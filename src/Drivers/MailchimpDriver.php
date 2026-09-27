@@ -95,7 +95,9 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     public static function getEnvMapping(): array
     {
         return [
-            'MAILCHIMP_TOKEN_PATH' => 'token_path',
+            'mailchimp' => [
+                'MAILCHIMP_TOKEN_PATH' => 'token_path',
+            ],
         ];
     }
 

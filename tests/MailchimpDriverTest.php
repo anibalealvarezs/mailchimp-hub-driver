@@ -199,6 +199,27 @@ class MailchimpDriverTest extends TestCase
         $this->assertSame([], MailchimpDriver::getChanneledAccounts(['name' => 'No Id']));
     }
 
+    public function testGetEnvMappingUsesNestedPerChannelShape(): void
+    {
+        $mapping = MailchimpDriver::getEnvMapping();
+
+        $this->assertArrayHasKey('mailchimp', $mapping);
+        $this->assertIsArray($mapping['mailchimp']);
+        $this->assertSame(['MAILCHIMP_TOKEN_PATH' => 'token_path'], $mapping['mailchimp']);
+
+        foreach ($mapping as $targetChan => $envMap) {
+            $this->assertIsArray(
+                $envMap,
+                sprintf('Mapping for "%s" must be an array; a flat [ENV => key] shape makes Helpers::getChannelsConfig() foreach a string.', $targetChan)
+            );
+
+            foreach ($envMap as $envKey => $configKey) {
+                $this->assertIsString($configKey);
+                $this->assertMatchesRegularExpression('/^[A-Z0-9_]+$/', (string) $envKey, 'Keys must be env var names; Helpers uses them as getenv() arguments.');
+            }
+        }
+    }
+
     public function testPreAggregationRulesContract(): void
     {
         $rules = MailchimpDriver::getPreAggregationRules();
