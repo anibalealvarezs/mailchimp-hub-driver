@@ -124,7 +124,21 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
     public function updateConfiguration(array $newData, array $currentConfig): array
     {
-        return array_merge($currentConfig, $newData);
+        $selectedAudiences = $newData['assets']['audiences'] ?? [];
+
+        if (empty($selectedAudiences) && isset($newData['type']) && $newData['type'] !== 'global') {
+            $this->logger?->warning('Received empty audiences payload for Mailchimp, skipping update to prevent wipe.');
+
+            return $currentConfig;
+        }
+
+        $merged = array_merge($currentConfig, $newData);
+
+        $merged['audiences'] = $selectedAudiences;
+
+        unset($merged['assets']);
+
+        return $merged;
     }
 
     public function validateAuthentication(): array
