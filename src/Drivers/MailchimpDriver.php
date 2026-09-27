@@ -132,13 +132,40 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             return $currentConfig;
         }
 
-        $merged = array_merge($currentConfig, $newData);
+        // Ensure channel config exists (same pattern as other drivers)
+        if (!isset($currentConfig['channels']['mailchimp'])) {
+            $currentConfig['channels']['mailchimp'] = [];
+        }
 
-        $merged['audiences'] = $selectedAudiences;
+        $chanCfg = &$currentConfig['channels']['mailchimp'];
 
-        unset($merged['assets']);
+        // Extract fields from root payload (same pattern as other drivers)
+        $chanCfg['enabled'] = $newData['enabled'] ?? ($chanCfg['enabled'] ?? true);
+        
+        if (isset($newData['cron_time'])) {
+            $chanCfg['cron_time'] = $newData['cron_time'];
+        }
+        if (isset($newData['granular_sync'])) {
+            $chanCfg['granular_sync'] = filter_var($newData['granular_sync'], FILTER_VALIDATE_BOOLEAN);
+        }
+        if (isset($newData['cache_history_range'])) {
+            $chanCfg['cache_history_range'] = $newData['cache_history_range'];
+        }
+        if (isset($newData['max_workers'])) {
+            $chanCfg['max_workers'] = (int)$newData['max_workers'];
+        }
+        if (isset($newData['calculate_synthetics'])) {
+            $chanCfg['calculate_synthetics'] = filter_var($newData['calculate_synthetics'], FILTER_VALIDATE_BOOLEAN);
+        }
+        if (isset($newData['accounts'])) {
+            $chanCfg['accounts'] = $newData['accounts'];
+        }
 
-        return $merged;
+        // Unpack audiences from assets.audiences to flat audiences
+        $chanCfg['audiences'] = $selectedAudiences;
+        unset($chanCfg['assets']);
+
+        return $currentConfig;
     }
 
     public function validateAuthentication(): array
