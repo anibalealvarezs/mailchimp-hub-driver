@@ -6,6 +6,7 @@ namespace Anibalealvarezs\MailchimpHubDriver\Drivers;
 
 use Anibalealvarezs\ApiDriverCore\Interfaces\AuthProviderInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\CanonicalMetricDictionaryProviderInterface;
+use Anibalealvarezs\ApiDriverCore\Interfaces\ChanneledAccountableInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\MultiAccountAuthProviderInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\PreAggregationProviderInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\SyncDriverInterface;
@@ -18,7 +19,7 @@ use Exception;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
-class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInterface, CanonicalMetricDictionaryProviderInterface
+class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInterface, CanonicalMetricDictionaryProviderInterface, ChanneledAccountableInterface
 {
     use SyncDriverTrait;
 
@@ -181,6 +182,53 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
         }
 
         return $assets;
+    }
+
+    public static function getChanneledAccounts(array $asset): array
+    {
+        $platformId = self::getChanneledAccountPlatformId($asset);
+
+        if ($platformId === '') {
+            return [];
+        }
+
+        $platformCreatedAt = self::getChanneledAccountPlatformCreatedAt($asset);
+
+        return [
+            [
+                'platformId'        => $platformId,
+                'platformCreatedAt' => $platformCreatedAt !== '' ? $platformCreatedAt : null,
+                'name'              => self::getChanneledAccountName($asset),
+                'type'              => self::getChanneledAccountType(),
+                'enabled'           => filter_var($asset['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'data'              => self::getChanneledAccountData($asset),
+            ]
+        ];
+    }
+
+    public static function getChanneledAccountPlatformId(array $asset, ?string $key = null): string
+    {
+        return (string)($asset['platform_id'] ?? $asset['id'] ?? '');
+    }
+
+    public static function getChanneledAccountPlatformCreatedAt(array $asset, ?string $key = null): string
+    {
+        return (string)($asset['date_created'] ?? $asset['platformCreatedAt'] ?? '');
+    }
+
+    public static function getChanneledAccountName(array $asset, ?string $key = null): string
+    {
+        return (string)($asset['name'] ?? '');
+    }
+
+    public static function getChanneledAccountType(): string
+    {
+        return 'audience';
+    }
+
+    public static function getChanneledAccountData(array $asset, ?string $key = null): array
+    {
+        return is_array($asset['data'] ?? null) ? $asset['data'] : [];
     }
 
     public function getChannel(): string

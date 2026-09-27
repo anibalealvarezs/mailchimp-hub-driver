@@ -158,6 +158,47 @@ class MailchimpDriverTest extends TestCase
         $this->assertEquals(md5('buyer@example.com'), $convertedOrders->first()->identity_hash);
     }
 
+    public function testGetChanneledAccountsMapsDiscoveredAudience(): void
+    {
+        $accounts = MailchimpDriver::getChanneledAccounts([
+            'account_id' => 'mc_a',
+            'platform_id' => 'list_123',
+            'name' => 'Newsletter VIP',
+            'type' => 'audience',
+            'enabled' => true,
+        ]);
+
+        $this->assertCount(1, $accounts);
+        $this->assertEquals('list_123', $accounts[0]['platformId']);
+        $this->assertEquals('Newsletter VIP', $accounts[0]['name']);
+        $this->assertEquals('audience', $accounts[0]['type']);
+        $this->assertTrue($accounts[0]['enabled']);
+        $this->assertNull($accounts[0]['platformCreatedAt']);
+        $this->assertSame([], $accounts[0]['data']);
+    }
+
+    public function testGetChanneledAccountsAcceptsIdKeyAndDisabledFlag(): void
+    {
+        $accounts = MailchimpDriver::getChanneledAccounts([
+            'id' => 'list_456',
+            'name' => 'Seasonal Sale',
+            'enabled' => false,
+            'date_created' => '2026-01-01 00:00:00',
+            'data' => ['member_count' => 12],
+        ]);
+
+        $this->assertCount(1, $accounts);
+        $this->assertEquals('list_456', $accounts[0]['platformId']);
+        $this->assertEquals('2026-01-01 00:00:00', $accounts[0]['platformCreatedAt']);
+        $this->assertFalse($accounts[0]['enabled']);
+        $this->assertSame(['member_count' => 12], $accounts[0]['data']);
+    }
+
+    public function testGetChanneledAccountsReturnsEmptyWithoutPlatformId(): void
+    {
+        $this->assertSame([], MailchimpDriver::getChanneledAccounts(['name' => 'No Id']));
+    }
+
     public function testPreAggregationRulesContract(): void
     {
         $rules = MailchimpDriver::getPreAggregationRules();
