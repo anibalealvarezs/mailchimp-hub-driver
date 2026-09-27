@@ -41,6 +41,22 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     public static function storeCredentials(array $credentials): void
     {
         $auth = new MailchimpAuthProvider();
+
+        if (!empty($credentials['accounts']) && is_array($credentials['accounts'])) {
+            foreach ($credentials['accounts'] as $accountId => $account) {
+                if (is_array($account)) {
+                    $auth->storeAccountCredentials((string) $accountId, $account);
+                }
+            }
+
+            $legacy = $auth->getCredentialsForAccount('default');
+            if (is_array($legacy) && !empty($legacy['accounts']) && is_array($legacy['accounts'])) {
+                $auth->removeAccountCredentials('default');
+            }
+
+            return;
+        }
+
         $accountId = $credentials['account_id'] ?? 'default';
         $auth->storeAccountCredentials($accountId, $credentials);
     }

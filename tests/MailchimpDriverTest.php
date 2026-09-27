@@ -20,9 +20,82 @@ class MailchimpDriverTest extends TestCase
 
     protected function tearDown(): void
     {
+        putenv('MAILCHIMP_TOKEN_PATH');
+        unset($_ENV['MAILCHIMP_TOKEN_PATH']);
+
         if (file_exists($this->tempTokenPath)) {
             unlink($this->tempTokenPath);
         }
+    }
+
+    public function testStoreCredentialsUnpacksMultiAccountPayload(): void
+    {
+        putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);
+        $_ENV['MAILCHIMP_TOKEN_PATH'] = $this->tempTokenPath;
+
+        MailchimpDriver::storeCredentials([
+            'access_token' => '',
+            'accounts' => [
+                'mc_a' => ['api_key' => 'key-us4', 'server_prefix' => 'us4', 'account_name' => 'Client A'],
+                'mc_b' => ['api_key' => 'key-us6', 'server_prefix' => 'us6', 'account_name' => 'Client B'],
+            ],
+        ]);
+
+        $provider = new MailchimpAuthProvider($this->tempTokenPath);
+        $accounts = $provider->getAccounts();
+
+        $this->assertCount(2, $accounts);
+        $this->assertArrayHasKey('mc_a', $accounts);
+        $this->assertArrayHasKey('mc_b', $accounts);
+        $this->assertArrayNotHasKey('default', $accounts);
+        $this->assertTrue($accounts['mc_a']['is_valid']);
+        $this->assertTrue($accounts['mc_b']['is_valid']);
+        $this->assertEquals('key-us4', $provider->getCredentialsForAccount('mc_a')['api_key']);
+        $this->assertEquals('mc_a', $provider->getActiveAccountId());
+    }
+
+    public function testStoreCredentialsPurgesLegacyNestedDefaultEntry(): void
+    {
+        file_put_contents($this->tempTokenPath, json_encode([
+            'accounts' => [
+                'default' => [
+                    'accounts' => ['mc_legacy' => ['api_key' => 'key-us1']],
+                    'access_token' => '',
+                ],
+            ],
+        ]));
+
+        putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);
+        $_ENV['MAILCHIMP_TOKEN_PATH'] = $this->tempTokenPath;
+
+        MailchimpDriver::storeCredentials([
+            'accounts' => ['mc_a' => ['api_key' => 'key-us4']],
+        ]);
+
+        $provider = new MailchimpAuthProvider($this->tempTokenPath);
+        $accounts = $provider->getAccounts();
+
+        $this->assertArrayNotHasKey('default', $accounts);
+        $this->assertArrayHasKey('mc_a', $accounts);
+        $this->assertEquals('mc_a', $provider->getActiveAccountId());
+    }
+
+    public function testStoreCredentialsKeepsSingleAccountFallback(): void
+    {
+        putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);
+        $_ENV['MAILCHIMP_TOKEN_PATH'] = $this->tempTokenPath;
+
+        MailchimpDriver::storeCredentials([
+            'account_id' => 'mc_single',
+            'api_key' => 'key-us7',
+        ]);
+
+        $provider = new MailchimpAuthProvider($this->tempTokenPath);
+        $accounts = $provider->getAccounts();
+
+        $this->assertCount(1, $accounts);
+        $this->assertArrayHasKey('mc_single', $accounts);
+        $this->assertTrue($accounts['mc_single']['is_valid']);
     }
 
     public function testAuthProviderMultiAccountStorage(): void
