@@ -37,6 +37,12 @@ class MailchimpAuthProvider extends BaseAuthProvider implements MultiAccountAuth
         }
 
         $accounts = $this->getAccounts();
+        foreach ($accounts as $id => $acc) {
+            if (!empty($acc['is_valid'])) {
+                return (string) $id;
+            }
+        }
+
         if (!empty($accounts)) {
             return (string) array_key_first($accounts);
         }
@@ -49,10 +55,16 @@ class MailchimpAuthProvider extends BaseAuthProvider implements MultiAccountAuth
      */
     public function getAccounts(): array
     {
+        $this->normalizeAccounts();
+
         $accounts = $this->data['accounts'] ?? [];
         $result = [];
 
         foreach ($accounts as $id => $acc) {
+            if ($id === 'default' && empty($acc['api_key']) && empty($acc['access_token'])) {
+                continue;
+            }
+
             $result[(string)$id] = [
                 'account_id' => (string)$id,
                 'name' => $acc['account_name'] ?? ($acc['name'] ?? null),
@@ -61,6 +73,42 @@ class MailchimpAuthProvider extends BaseAuthProvider implements MultiAccountAuth
         }
 
         return $result;
+    }
+
+    /**
+     * Unwraps any malformed or legacy nested accounts (e.g. accounts.default.accounts.*)
+     * into top-level accounts and purges empty default entries.
+     */
+    public function normalizeAccounts(): void
+    {
+        if (!isset($this->data['accounts']) || !is_array($this->data['accounts'])) {
+            return;
+        }
+
+        $modified = false;
+
+        if (isset($this->data['accounts']['default']['accounts']) && is_array($this->data['accounts']['default']['accounts'])) {
+            foreach ($this->data['accounts']['default']['accounts'] as $subId => $subAcc) {
+                if (is_array($subAcc)) {
+                    $this->data['accounts'][(string)$subId] = $subAcc;
+                    $modified = true;
+                }
+            }
+            unset($this->data['accounts']['default']);
+            $modified = true;
+        }
+
+        if (isset($this->data['accounts']['default'])) {
+            $def = $this->data['accounts']['default'];
+            if (empty($def['api_key']) && empty($def['access_token']) && count($this->data['accounts']) > 1) {
+                unset($this->data['accounts']['default']);
+                $modified = true;
+            }
+        }
+
+        if ($modified) {
+            $this->save();
+        }
     }
 
     public function getCredentialsForAccount(string $accountId): ?array

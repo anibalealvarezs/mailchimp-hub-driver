@@ -43,15 +43,22 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     {
         $auth = new MailchimpAuthProvider();
 
-        if (!empty($credentials['accounts']) && is_array($credentials['accounts'])) {
-            foreach ($credentials['accounts'] as $accountId => $account) {
+        $accounts = $credentials['accounts'] ?? null;
+        if (!empty($accounts) && is_array($accounts)) {
+            // Un-nest if accounts are inside accounts.default.accounts
+            if (isset($accounts['default']['accounts']) && is_array($accounts['default']['accounts'])) {
+                $accounts = array_merge($accounts, $accounts['default']['accounts']);
+                unset($accounts['default']);
+            }
+
+            foreach ($accounts as $accountId => $account) {
                 if (is_array($account)) {
                     $auth->storeAccountCredentials((string) $accountId, $account);
                 }
             }
 
             $legacy = $auth->getCredentialsForAccount('default');
-            if (is_array($legacy) && !empty($legacy['accounts']) && is_array($legacy['accounts'])) {
+            if (is_array($legacy) && (empty($legacy['api_key']) || !empty($legacy['accounts']))) {
                 $auth->removeAccountCredentials('default');
             }
 

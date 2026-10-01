@@ -81,10 +81,16 @@ class MailchimpConvert
      */
     public static function links(array $urlsClicked, string $campaignId, string $accountId): ArrayCollection
     {
+        $now = date('Y-m-d H:i:s');
+        foreach ($urlsClicked as &$item) {
+            $item['_created_at'] = $now;
+        }
+        unset($item);
+
         return UniversalEntityConverter::convert($urlsClicked, [
             'channel' => 'mailchimp',
             'platform_id_field' => 'id',
-            'date_field' => fn () => date('Y-m-d H:i:s'),
+            'date_field' => '_created_at',
             'mapping' => [
                 'category' => fn () => AssetCategory::UNIT->value,
                 'account_id' => fn () => $accountId,
@@ -102,10 +108,16 @@ class MailchimpConvert
      */
     public static function folders(array $folders, string $accountId): ArrayCollection
     {
+        $now = date('Y-m-d H:i:s');
+        foreach ($folders as &$item) {
+            $item['_created_at'] = $now;
+        }
+        unset($item);
+
         return UniversalEntityConverter::convert($folders, [
             'channel' => 'mailchimp',
             'platform_id_field' => 'id',
-            'date_field' => fn () => date('Y-m-d H:i:s'),
+            'date_field' => '_created_at',
             'mapping' => [
                 'category' => fn () => AssetCategory::GROUPING->value,
                 'account_id' => fn () => $accountId,
@@ -143,12 +155,15 @@ class MailchimpConvert
             $emailId = $item['email_id'] ?? '';
             $activities = $item['activity'] ?? [];
             foreach ($activities as $act) {
+                $action = $act['action'] ?? 'open';
+                $timestamp = $act['timestamp'] ?? date('Y-m-d H:i:s');
                 $flattened[] = [
+                    'event_id' => md5($campaignId . ':' . $emailId . ':' . $action . ':' . $timestamp),
                     'campaign_id' => $campaignId,
                     'account_id' => $accountId,
                     'email_id' => $emailId,
-                    'action' => $act['action'] ?? 'open',
-                    'timestamp' => $act['timestamp'] ?? date('Y-m-d H:i:s'),
+                    'action' => $action,
+                    'timestamp' => $timestamp,
                     'ip' => $act['ip'] ?? null,
                     'url' => $act['url'] ?? null,
                     'type' => $act['type'] ?? null,
@@ -158,7 +173,7 @@ class MailchimpConvert
 
         return UniversalEntityConverter::convert($flattened, [
             'channel' => 'mailchimp',
-            'platform_id_field' => fn ($r) => md5($r['campaign_id'] . ':' . $r['email_id'] . ':' . $r['action'] . ':' . $r['timestamp']),
+            'platform_id_field' => 'event_id',
             'date_field' => 'timestamp',
             'mapping' => [
                 'campaign_id' => 'campaign_id',
