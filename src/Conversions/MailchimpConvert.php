@@ -157,6 +157,7 @@ class MailchimpConvert
             foreach ($activities as $act) {
                 $action = $act['action'] ?? 'open';
                 $timestamp = $act['timestamp'] ?? date('Y-m-d H:i:s');
+                $isProxy = !empty($act['is_proxy']) || !empty($act['proxy_open']);
                 $flattened[] = [
                     'event_id' => md5($campaignId . ':' . $emailId . ':' . $action . ':' . $timestamp),
                     'campaign_id' => $campaignId,
@@ -169,6 +170,7 @@ class MailchimpConvert
                     'ip' => $act['ip'] ?? null,
                     'url' => $act['url'] ?? null,
                     'type' => $act['type'] ?? null,
+                    'is_proxy' => $isProxy,
                 ];
             }
         }
@@ -186,6 +188,7 @@ class MailchimpConvert
                 'identity_hash' => 'email_id',
                 'url' => 'url',
                 'bounce_type' => 'type',
+                'is_proxy' => 'is_proxy',
             ],
         ]);
     }
