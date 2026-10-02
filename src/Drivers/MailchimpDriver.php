@@ -472,10 +472,12 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                     continue;
                 }
 
-                $api->getAllEmailActivityAndProcess($campaignId, function ($activity) use ($campaignId, $accountId) {
-                    $events = MailchimpConvert::events($activity, $campaignId, $accountId);
+                $listId = (string)($campaign['recipients']['list_id'] ?? $accountId);
+
+                $api->getAllEmailActivityAndProcess($campaignId, function ($activity) use ($campaignId, $listId, $accountId) {
+                    $events = MailchimpConvert::events($activity, $campaignId, $listId, $accountId);
                     if ($this->dataProcessor && $events->count() > 0) {
-                        ($this->dataProcessor)($events, $this->logger);
+                        ($this->dataProcessor)($events, 'event');
                     }
                 }, batchSize: 1000, since: $sinceDate);
             }
@@ -491,7 +493,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 $api->getAllEcommerceOrdersAndProcess($storeId, function ($orders) use ($storeId, $accountId) {
                     $ordersCollection = MailchimpConvert::orders($orders, $storeId, $accountId);
                     if ($this->dataProcessor && $ordersCollection->count() > 0) {
-                        ($this->dataProcessor)($ordersCollection, $this->logger);
+                        ($this->dataProcessor)($ordersCollection, 'order');
                     }
                 }, batchSize: 1000);
             }

@@ -148,7 +148,7 @@ class MailchimpConvert
     /**
      * Converts raw recipient email activity events (opens, clicks, bounces) into ChanneledEvent entities.
      */
-    public static function events(array $emailsActivity, string $campaignId, string $accountId): ArrayCollection
+    public static function events(array $emailsActivity, string $campaignId, string $listId, string $accountId): ArrayCollection
     {
         $flattened = [];
         foreach ($emailsActivity as $item) {
@@ -160,9 +160,11 @@ class MailchimpConvert
                 $flattened[] = [
                     'event_id' => md5($campaignId . ':' . $emailId . ':' . $action . ':' . $timestamp),
                     'campaign_id' => $campaignId,
+                    'channeled_account_id' => $listId,
                     'account_id' => $accountId,
                     'email_id' => $emailId,
                     'action' => $action,
+                    'name' => $action,
                     'timestamp' => $timestamp,
                     'ip' => $act['ip'] ?? null,
                     'url' => $act['url'] ?? null,
@@ -176,6 +178,8 @@ class MailchimpConvert
             'platform_id_field' => 'event_id',
             'date_field' => 'timestamp',
             'mapping' => [
+                'name' => 'name',
+                'channeledAccountId' => 'channeled_account_id',
                 'campaign_id' => 'campaign_id',
                 'account_id' => 'account_id',
                 'action' => 'action',
