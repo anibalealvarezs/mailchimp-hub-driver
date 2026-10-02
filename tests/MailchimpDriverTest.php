@@ -156,6 +156,34 @@ class MailchimpDriverTest extends TestCase
         $this->assertCount(1, $convertedOrders);
         $this->assertEquals('ord_999', $convertedOrders->first()->getPlatformId());
         $this->assertEquals(md5('buyer@example.com'), $convertedOrders->first()->identity_hash);
+
+        // Test sentToEvents
+        $sentTo = [
+            [
+                'email_id' => 'abc123hash',
+                'email_address' => 'subscriber@example.com',
+                'status' => 'sent',
+                'last_changed' => '2026-04-17 10:00:00',
+            ]
+        ];
+        $convertedSends = MailchimpConvert::sentToEvents($sentTo, 'camp_1', 'list_123', 'acc_1');
+        $this->assertCount(1, $convertedSends);
+        $this->assertEquals('send', $convertedSends->first()->action);
+        $this->assertEquals('abc123hash', $convertedSends->first()->identity_hash);
+
+        // Test unsubscribeEvents
+        $unsubs = [
+            [
+                'email_id' => 'unsub123hash',
+                'email_address' => 'unsub@example.com',
+                'timestamp' => '2026-04-18 11:00:00',
+                'reason' => 'spam',
+            ]
+        ];
+        $convertedUnsubs = MailchimpConvert::unsubscribeEvents($unsubs, 'camp_1', 'list_123', 'acc_1');
+        $this->assertCount(1, $convertedUnsubs);
+        $this->assertEquals('unsubscribe', $convertedUnsubs->first()->action);
+        $this->assertEquals('unsub123hash', $convertedUnsubs->first()->identity_hash);
     }
 
     public function testGetChanneledAccountsMapsDiscoveredAudience(): void

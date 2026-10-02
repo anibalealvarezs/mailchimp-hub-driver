@@ -475,13 +475,31 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 }
 
                 $listId = (string)($campaign['recipients']['list_id'] ?? $accountId);
+                $campaignSendTime = (string)($campaign['send_time'] ?? '');
 
+                // 1a. Stream recipient engagement (opens, clicks, bounces)
                 $api->getAllEmailActivityAndProcess($campaignId, function ($activity) use ($campaignId, $listId, $accountId) {
                     $events = MailchimpConvert::events($activity, $campaignId, $listId, $accountId);
                     if ($this->dataProcessor && $events->count() > 0) {
                         ($this->dataProcessor)($events, 'event');
                     }
                 }, batchSize: 1000, since: $sinceDate);
+
+                // 1b. Stream sent recipients (sends)
+                $api->getAllSentToMembersAndProcess($campaignId, function ($sentMembers) use ($campaignId, $listId, $accountId, $campaignSendTime) {
+                    $events = MailchimpConvert::sentToEvents($sentMembers, $campaignId, $listId, $accountId, $campaignSendTime);
+                    if ($this->dataProcessor && $events->count() > 0) {
+                        ($this->dataProcessor)($events, 'event');
+                    }
+                }, batchSize: 1000);
+
+                // 1c. Stream unsubscribed recipients
+                $api->getAllUnsubscribedMembersAndProcess($campaignId, function ($unsubMembers) use ($campaignId, $listId, $accountId, $campaignSendTime) {
+                    $events = MailchimpConvert::unsubscribeEvents($unsubMembers, $campaignId, $listId, $accountId, $campaignSendTime);
+                    if ($this->dataProcessor && $events->count() > 0) {
+                        ($this->dataProcessor)($events, 'event');
+                    }
+                }, batchSize: 1000);
             }
 
             // 2. Stream Connected Store Orders

@@ -194,6 +194,94 @@ class MailchimpConvert
     }
 
     /**
+     * Converts campaign sent-to recipients into ChanneledEvent entities with action='send'.
+     */
+    public static function sentToEvents(array $sentToMembers, string $campaignId, string $listId, string $accountId, ?string $fallbackTimestamp = null): ArrayCollection
+    {
+        $flattened = [];
+        $fallback = $fallbackTimestamp ?: date('Y-m-d H:i:s');
+
+        foreach ($sentToMembers as $member) {
+            $emailId = (string)($member['email_id'] ?? '');
+            if (empty($emailId) && !empty($member['email_address'])) {
+                $emailId = md5(strtolower(trim($member['email_address'])));
+            }
+
+            $timestamp = $member['last_changed'] ?? $fallback;
+
+            $flattened[] = [
+                'event_id' => md5($campaignId . ':' . $emailId . ':send:' . $timestamp),
+                'campaign_id' => $campaignId,
+                'channeled_account_id' => $listId,
+                'account_id' => $accountId,
+                'email_id' => $emailId,
+                'action' => 'send',
+                'name' => 'send',
+                'timestamp' => $timestamp,
+                'status' => $member['status'] ?? 'sent',
+            ];
+        }
+
+        return UniversalEntityConverter::convert($flattened, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'event_id',
+            'date_field' => 'timestamp',
+            'mapping' => [
+                'name' => 'name',
+                'channeledAccountId' => 'channeled_account_id',
+                'campaign_id' => 'campaign_id',
+                'account_id' => 'account_id',
+                'action' => 'action',
+                'identity_hash' => 'email_id',
+            ],
+        ]);
+    }
+
+    /**
+     * Converts campaign unsubscribed members into ChanneledEvent entities with action='unsubscribe'.
+     */
+    public static function unsubscribeEvents(array $unsubscribedMembers, string $campaignId, string $listId, string $accountId, ?string $fallbackTimestamp = null): ArrayCollection
+    {
+        $flattened = [];
+        $fallback = $fallbackTimestamp ?: date('Y-m-d H:i:s');
+
+        foreach ($unsubscribedMembers as $member) {
+            $emailId = (string)($member['email_id'] ?? '');
+            if (empty($emailId) && !empty($member['email_address'])) {
+                $emailId = md5(strtolower(trim($member['email_address'])));
+            }
+
+            $timestamp = $member['timestamp'] ?? $fallback;
+
+            $flattened[] = [
+                'event_id' => md5($campaignId . ':' . $emailId . ':unsubscribe:' . $timestamp),
+                'campaign_id' => $campaignId,
+                'channeled_account_id' => $listId,
+                'account_id' => $accountId,
+                'email_id' => $emailId,
+                'action' => 'unsubscribe',
+                'name' => 'unsubscribe',
+                'timestamp' => $timestamp,
+                'reason' => $member['reason'] ?? null,
+            ];
+        }
+
+        return UniversalEntityConverter::convert($flattened, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => 'event_id',
+            'date_field' => 'timestamp',
+            'mapping' => [
+                'name' => 'name',
+                'channeledAccountId' => 'channeled_account_id',
+                'campaign_id' => 'campaign_id',
+                'account_id' => 'account_id',
+                'action' => 'action',
+                'identity_hash' => 'email_id',
+            ],
+        ]);
+    }
+
+    /**
      * Converts connected store orders into ChanneledOrder entities.
      */
     public static function orders(array $orders, string $storeId, string $accountId): ArrayCollection
