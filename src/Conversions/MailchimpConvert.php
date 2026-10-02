@@ -200,6 +200,15 @@ class MailchimpConvert
             'platform_id_field' => 'id',
             'date_field' => 'created_at',
             'mapping' => [
+                'customer' => fn ($r) => !empty($r['customer']) ? (object) [
+                    'id' => $r['customer']['id'] ?? null,
+                    'email' => $r['customer']['email_address'] ?? null,
+                ] : null,
+                'discountCodes' => fn ($r) => !empty($r['promos']) ? array_map(fn ($p) => $p['code'] ?? '', $r['promos']) : [],
+                'lineItems' => fn ($r) => !empty($r['lines']) ? array_map(fn ($l) => [
+                    'product_id' => $l['product_id'] ?? null,
+                    'variant_id' => $l['product_variant_id'] ?? null,
+                ], $r['lines']) : [],
                 'store_id' => fn () => $storeId,
                 'account_id' => fn () => $accountId,
                 'campaign_id' => fn ($r) => $r['campaign_id'] ?? null,
