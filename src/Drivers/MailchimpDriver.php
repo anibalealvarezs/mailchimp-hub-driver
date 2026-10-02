@@ -468,7 +468,14 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
             // 1. Stream Campaign Activity Events
             $campaignsData = $api->getAllCampaigns();
+            $startTimestamp = $startDate->getTimestamp();
+            $endTimestamp = $endDate->getTimestamp();
+
             foreach ($campaignsData['campaigns'] ?? [] as $campaign) {
+                if ($shouldContinue && !$shouldContinue()) {
+                    throw new Exception("Sync aborted by orchestrator.");
+                }
+
                 $campaignId = (string)($campaign['id'] ?? '');
                 if (empty($campaignId)) {
                     continue;
@@ -476,30 +483,48 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
                 $listId = (string)($campaign['recipients']['list_id'] ?? $accountId);
                 $campaignSendTime = (string)($campaign['send_time'] ?? '');
+                $campSendTs = !empty($campaignSendTime) ? strtotime($campaignSendTime) : 0;
+
+                // If campaign was sent, verify it falls within or after the sync period
+                // (or if it has activity within the window)
+                $campaignInWindow = ($campSendTs >= $startTimestamp && $campSendTs <= $endTimestamp);
 
                 // 1a. Stream recipient engagement (opens, clicks, bounces)
-                $api->getAllEmailActivityAndProcess($campaignId, function ($activity) use ($campaignId, $listId, $accountId) {
+                $api->getAllEmailActivityAndProcess($campaignId, function ($activity) use ($campaignId, $listId, $accountId, $shouldContinue) {
+                    if ($shouldContinue && !$shouldContinue()) {
+                        throw new Exception("Sync aborted by orchestrator.");
+                    }
                     $events = MailchimpConvert::events($activity, $campaignId, $listId, $accountId);
                     if ($this->dataProcessor && $events->count() > 0) {
                         ($this->dataProcessor)($events, 'event');
                     }
                 }, batchSize: 1000, since: $sinceDate);
 
-                // 1b. Stream sent recipients (sends)
-                $api->getAllSentToMembersAndProcess($campaignId, function ($sentMembers) use ($campaignId, $listId, $accountId, $campaignSendTime) {
-                    $events = MailchimpConvert::sentToEvents($sentMembers, $campaignId, $listId, $accountId, $campaignSendTime);
-                    if ($this->dataProcessor && $events->count() > 0) {
-                        ($this->dataProcessor)($events, 'event');
-                    }
-                }, batchSize: 1000);
+                // 1b. Stream sent recipients only if the campaign was actually sent in this timeframe
+                if ($campaignInWindow) {
+                    $api->getAllSentToMembersAndProcess($campaignId, function ($sentMembers) use ($campaignId, $listId, $accountId, $campaignSendTime, $shouldContinue) {
+                        if ($shouldContinue && !$shouldContinue()) {
+                            throw new Exception("Sync aborted by orchestrator.");
+                        }
+                        $events = MailchimpConvert::sentToEvents($sentMembers, $campaignId, $listId, $accountId, $campaignSendTime);
+                        if ($this->dataProcessor && $events->count() > 0) {
+                            ($this->dataProcessor)($events, 'event');
+                        }
+                    }, batchSize: 1000);
+                }
 
                 // 1c. Stream unsubscribed recipients
-                $api->getAllUnsubscribedMembersAndProcess($campaignId, function ($unsubMembers) use ($campaignId, $listId, $accountId, $campaignSendTime) {
-                    $events = MailchimpConvert::unsubscribeEvents($unsubMembers, $campaignId, $listId, $accountId, $campaignSendTime);
-                    if ($this->dataProcessor && $events->count() > 0) {
-                        ($this->dataProcessor)($events, 'event');
-                    }
-                }, batchSize: 1000);
+                if ($campaignInWindow) {
+                    $api->getAllUnsubscribedMembersAndProcess($campaignId, function ($unsubMembers) use ($campaignId, $listId, $accountId, $campaignSendTime, $shouldContinue) {
+                        if ($shouldContinue && !$shouldContinue()) {
+                            throw new Exception("Sync aborted by orchestrator.");
+                        }
+                        $events = MailchimpConvert::unsubscribeEvents($unsubMembers, $campaignId, $listId, $accountId, $campaignSendTime);
+                        if ($this->dataProcessor && $events->count() > 0) {
+                            ($this->dataProcessor)($events, 'event');
+                        }
+                    }, batchSize: 1000);
+                }
             }
 
             // 2. Stream Connected Store Orders
