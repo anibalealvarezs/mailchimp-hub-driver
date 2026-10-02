@@ -262,5 +262,6 @@ class MailchimpDriverTest extends TestCase
         $this->assertArrayHasKey('clicks_unique', $metrics);
 
         $this->assertEquals(30, MailchimpDriver::getDefaultAttributionWindowDays());
+        $this->assertEquals(2, MailchimpDriver::getDefaultMaxWorkers());
     }
 }

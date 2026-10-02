@@ -89,6 +89,11 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
         return 'mailchimp';
     }
 
+    public static function getDefaultMaxWorkers(): int
+    {
+        return 2;
+    }
+
     public static function getChannelIcon(): string
     {
         return 'M';
