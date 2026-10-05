@@ -417,7 +417,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             $api->getAllCampaignsAndProcess(function ($campaigns) use ($api, $accountId) {
                 $campaignCollection = MailchimpConvert::campaigns($campaigns, $accountId);
                 if ($this->dataProcessor && $campaignCollection->count() > 0) {
-                    ($this->dataProcessor)($campaignCollection, $this->logger);
+                    ($this->dataProcessor)($campaignCollection, 'campaign');
                 }
 
                 foreach ($campaigns as $camp) {
@@ -426,7 +426,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                         $api->getAllClickDetailsAndProcess($campaignId, function ($links) use ($campaignId, $accountId) {
                             $linksCollection = MailchimpConvert::links($links, $campaignId, $accountId);
                             if ($this->dataProcessor && $linksCollection->count() > 0) {
-                                ($this->dataProcessor)($linksCollection, $this->logger);
+                                ($this->dataProcessor)($linksCollection, 'unit');
                             }
                         });
                     }
@@ -454,7 +454,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
                     $autoCollection = MailchimpConvert::campaigns($normalized, $accountId);
                     if ($this->dataProcessor && $autoCollection->count() > 0) {
-                        ($this->dataProcessor)($autoCollection, $this->logger);
+                        ($this->dataProcessor)($autoCollection, 'campaign');
                     }
                 });
             } catch (Exception $e) {
