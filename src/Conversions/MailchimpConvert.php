@@ -60,11 +60,13 @@ class MailchimpConvert
         return UniversalEntityConverter::convert($campaigns, [
             'channel' => 'mailchimp',
             'platform_id_field' => 'id',
-            'date_field' => 'send_time',
+            'date_field' => fn ($r) => !empty($r['send_time']) ? $r['send_time'] : ($r['create_time'] ?? ($r['start_time'] ?? null)),
             'mapping' => [
+                'name' => fn ($r) => $r['settings']['title'] ?? ($r['settings']['subject_line'] ?? ($r['title'] ?? ($r['id'] ?? ''))),
+                'channeledAccountId' => fn ($r) => $r['recipients']['list_id'] ?? $accountId,
                 'category' => fn () => AssetCategory::CAMPAIGN->value,
                 'account_id' => fn () => $accountId,
-                'title' => fn ($r) => $r['settings']['title'] ?? ($r['id'] ?? ''),
+                'title' => fn ($r) => $r['settings']['title'] ?? ($r['settings']['subject_line'] ?? ($r['title'] ?? ($r['id'] ?? ''))),
                 'subject' => fn ($r) => $r['settings']['subject_line'] ?? '',
                 'type' => fn ($r) => $r['type'] ?? 'regular',
                 'status' => fn ($r) => $r['status'] ?? 'save',

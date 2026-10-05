@@ -413,7 +413,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 }
             });
 
-            // 4. Sync Campaigns and their Tracked CTA Links
+            // 4. Sync Campaigns and their Tracked CTA Links (Regular & Automations)
             $api->getAllCampaignsAndProcess(function ($campaigns) use ($api, $accountId) {
                 $campaignCollection = MailchimpConvert::campaigns($campaigns, $accountId);
                 if ($this->dataProcessor && $campaignCollection->count() > 0) {
@@ -432,6 +432,34 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                     }
                 }
             });
+
+            // 5. Sync Classic Automations / Workflows if present
+            try {
+                $api->getAllAutomationsAndProcess(function ($automations) use ($api, $accountId) {
+                    // Normalize automations as campaigns
+                    $normalized = [];
+                    foreach ($automations as $auto) {
+                        $auto['type'] = 'automation';
+                        $auto['id'] = $auto['id'] ?? '';
+                        $auto['settings'] = [
+                            'title' => $auto['settings']['title'] ?? ($auto['id'] ?? ''),
+                            'subject_line' => $auto['settings']['from_name'] ?? '',
+                        ];
+                        $auto['recipients'] = [
+                            'list_id' => $auto['recipients']['list_id'] ?? null,
+                        ];
+                        $auto['emails_sent'] = $auto['emails_sent'] ?? 0;
+                        $normalized[] = $auto;
+                    }
+
+                    $autoCollection = MailchimpConvert::campaigns($normalized, $accountId);
+                    if ($this->dataProcessor && $autoCollection->count() > 0) {
+                        ($this->dataProcessor)($autoCollection, $this->logger);
+                    }
+                });
+            } catch (Exception $e) {
+                $this->logger?->info("Note: automations endpoint skipped or not supported: " . $e->getMessage());
+            }
         }
 
         return new Response(json_encode(['status' => 'success', 'message' => 'Mailchimp entities synced']), 200, ['Content-Type' => 'application/json']);
@@ -476,7 +504,31 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             $startTimestamp = $startDate->getTimestamp();
             $endTimestamp = $endDate->getTimestamp();
 
-            foreach ($campaignsData['campaigns'] ?? [] as $campaign) {
+            // Collect all campaign entities to process (regular, automated, RSS, etc.)
+            $allCampaignsToSync = $campaignsData['campaigns'] ?? [];
+
+            try {
+                $automationsData = $api->getAllAutomations();
+                foreach ($automationsData['automations'] ?? [] as $auto) {
+                    $workflowId = (string)($auto['id'] ?? '');
+                    if (!empty($workflowId)) {
+                        // Ingest workflow emails as campaigns
+                        $emailsResponse = $api->getAutomationEmails($workflowId);
+                        foreach ($emailsResponse['emails'] ?? [] as $wEmail) {
+                            $wEmail['type'] = 'automation';
+                            $wEmail['recipients'] = [
+                                'list_id' => $auto['recipients']['list_id'] ?? null,
+                            ];
+                            $allCampaignsToSync[] = $wEmail;
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                // Not all accounts have automations permissions/endpoints
+                $this->logger?->info("Automations activity stream skipped: " . $e->getMessage());
+            }
+
+            foreach ($allCampaignsToSync as $campaign) {
                 if ($shouldContinue && !$shouldContinue()) {
                     throw new Exception("Sync aborted by orchestrator.");
                 }
@@ -487,12 +539,11 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 }
 
                 $listId = (string)($campaign['recipients']['list_id'] ?? $accountId);
-                $campaignSendTime = (string)($campaign['send_time'] ?? '');
+                $campaignSendTime = (string)($campaign['send_time'] ?? ($campaign['create_time'] ?? ''));
                 $campSendTs = !empty($campaignSendTime) ? strtotime($campaignSendTime) : 0;
 
-                // If campaign was sent, verify it falls within or after the sync period
-                // (or if it has activity within the window)
-                $campaignInWindow = ($campSendTs >= $startTimestamp && $campSendTs <= $endTimestamp);
+                // Check if campaign was sent in this window, OR if send_time is absent/ongoing
+                $campaignInWindow = ($campSendTs === 0 || ($campSendTs >= $startTimestamp && $campSendTs <= $endTimestamp));
 
                 // 1a. Stream recipient engagement (opens, clicks, bounces)
                 $api->getAllEmailActivityAndProcess($campaignId, function ($activity) use ($campaignId, $listId, $accountId, $shouldContinue) {
@@ -505,13 +556,20 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                     }
                 }, batchSize: 1000, since: $sinceDate);
 
-                // 1b. Stream sent recipients only if the campaign was actually sent in this timeframe
+                // 1b. Stream sent recipients only if the campaign was sent in this timeframe
                 if ($campaignInWindow) {
-                    $api->getAllSentToMembersAndProcess($campaignId, function ($sentMembers) use ($campaignId, $listId, $accountId, $campaignSendTime, $shouldContinue) {
+                    $api->getAllSentToMembersAndProcess($campaignId, function ($sentMembers) use ($campaignId, $listId, $accountId, $campaignSendTime, $startTimestamp, $endTimestamp, $shouldContinue) {
                         if ($shouldContinue && !$shouldContinue()) {
                             throw new Exception("Sync aborted by orchestrator.");
                         }
-                        $events = MailchimpConvert::sentToEvents($sentMembers, $campaignId, $listId, $accountId, $campaignSendTime);
+
+                        // Filter sent members to window if their last_changed date is available
+                        $filtered = array_filter($sentMembers, function ($m) use ($startTimestamp, $endTimestamp, $campaignSendTime) {
+                            $memberTs = !empty($m['last_changed']) ? strtotime($m['last_changed']) : (!empty($campaignSendTime) ? strtotime($campaignSendTime) : 0);
+                            return $memberTs === 0 || ($memberTs >= $startTimestamp && $memberTs <= $endTimestamp);
+                        });
+
+                        $events = MailchimpConvert::sentToEvents($filtered, $campaignId, $listId, $accountId, $campaignSendTime);
                         if ($this->dataProcessor && $events->count() > 0) {
                             ($this->dataProcessor)($events, 'event');
                         }
@@ -520,11 +578,17 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
                 // 1c. Stream unsubscribed recipients
                 if ($campaignInWindow) {
-                    $api->getAllUnsubscribedMembersAndProcess($campaignId, function ($unsubMembers) use ($campaignId, $listId, $accountId, $campaignSendTime, $shouldContinue) {
+                    $api->getAllUnsubscribedMembersAndProcess($campaignId, function ($unsubMembers) use ($campaignId, $listId, $accountId, $campaignSendTime, $startTimestamp, $endTimestamp, $shouldContinue) {
                         if ($shouldContinue && !$shouldContinue()) {
                             throw new Exception("Sync aborted by orchestrator.");
                         }
-                        $events = MailchimpConvert::unsubscribeEvents($unsubMembers, $campaignId, $listId, $accountId, $campaignSendTime);
+
+                        $filtered = array_filter($unsubMembers, function ($m) use ($startTimestamp, $endTimestamp, $campaignSendTime) {
+                            $memberTs = !empty($m['timestamp']) ? strtotime($m['timestamp']) : (!empty($campaignSendTime) ? strtotime($campaignSendTime) : 0);
+                            return $memberTs === 0 || ($memberTs >= $startTimestamp && $memberTs <= $endTimestamp);
+                        });
+
+                        $events = MailchimpConvert::unsubscribeEvents($filtered, $campaignId, $listId, $accountId, $campaignSendTime);
                         if ($this->dataProcessor && $events->count() > 0) {
                             ($this->dataProcessor)($events, 'event');
                         }
