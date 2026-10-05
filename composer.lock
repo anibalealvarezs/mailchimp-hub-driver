@@ -123,13 +123,13 @@
             "source": {
                 "type": "git",
                 "url": "git@github.com:anibalealvarezs/mailchimp-api.git",
-                "reference": "f422dca10fdd8afd783783eec3503d62f7a2108b"
+                "reference": "bc18b1f733e6531d81219d50d10bc5772164093a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://satis.anibalalvarez.com/dist/anibalealvarezs/mailchimp-api/anibalealvarezs-mailchimp-api-f422dca10fdd8afd783783eec3503d62f7a2108b-zip-03803e.zip",
-                "reference": "f422dca10fdd8afd783783eec3503d62f7a2108b",
-                "shasum": "4b346490aaf89029602976ea27800d787c85911a"
+                "url": "https://satis.anibalalvarez.com/dist/anibalealvarezs/mailchimp-api/anibalealvarezs-mailchimp-api-bc18b1f733e6531d81219d50d10bc5772164093a-zip-d41627.zip",
+                "reference": "bc18b1f733e6531d81219d50d10bc5772164093a",
+                "shasum": "606027c43e76f24c88500f3fffffa05db80f9bf5"
             },
             "require": {
                 "anibalealvarezs/api-client-skeleton": "^1.0.0",
@@ -168,7 +168,7 @@
                 }
             ],
             "description": "description",
-            "time": "2026-09-26T17:58:27+00:00"
+            "time": "2026-10-05T15:53:46+00:00"
         },
         {
             "name": "anibalealvarezs/oauth-v1",
@@ -4204,16 +4204,16 @@
         },
         {
             "name": "phpunit/phpunit",
-            "version": "9.6.37",
+            "version": "9.6.38",
             "source": {
                 "type": "git",
                 "url": "https://github.com/sebastianbergmann/phpunit.git",
-                "reference": "aceaa623912caf8e80bffea22fc4103a0a01565f"
+                "reference": "8b5f757e8e92071bfdbfa93943f94f84c4e31007"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/sebastianbergmann/phpunit/zipball/aceaa623912caf8e80bffea22fc4103a0a01565f",
-                "reference": "aceaa623912caf8e80bffea22fc4103a0a01565f",
+                "url": "https://api.github.com/repos/sebastianbergmann/phpunit/zipball/8b5f757e8e92071bfdbfa93943f94f84c4e31007",
+                "reference": "8b5f757e8e92071bfdbfa93943f94f84c4e31007",
                 "shasum": ""
             },
             "require": {
@@ -4287,7 +4287,7 @@
             "support": {
                 "issues": "https://github.com/sebastianbergmann/phpunit/issues",
                 "security": "https://github.com/sebastianbergmann/phpunit/security/policy",
-                "source": "https://github.com/sebastianbergmann/phpunit/tree/9.6.37"
+                "source": "https://github.com/sebastianbergmann/phpunit/tree/9.6.38"
             },
             "funding": [
                 {
@@ -4295,7 +4295,7 @@
                     "type": "other"
                 }
             ],
-            "time": "2026-09-23T09:59:59+00:00"
+            "time": "2026-10-05T05:44:26+00:00"
         },
         {
             "name": "sebastian/cli-parser",
