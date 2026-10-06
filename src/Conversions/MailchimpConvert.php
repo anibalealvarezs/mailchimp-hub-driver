@@ -57,10 +57,15 @@ class MailchimpConvert
      */
     public static function campaigns(array $campaigns, string $accountId): ArrayCollection
     {
+        foreach ($campaigns as &$item) {
+            $item['_date'] = !empty($item['send_time']) ? $item['send_time'] : ($item['create_time'] ?? ($item['start_time'] ?? null));
+        }
+        unset($item);
+
         return UniversalEntityConverter::convert($campaigns, [
             'channel' => 'mailchimp',
             'platform_id_field' => 'id',
-            'date_field' => fn ($r) => !empty($r['send_time']) ? $r['send_time'] : ($r['create_time'] ?? ($r['start_time'] ?? null)),
+            'date_field' => '_date',
             'mapping' => [
                 'name' => fn ($r) => $r['settings']['title'] ?? ($r['settings']['subject_line'] ?? ($r['title'] ?? ($r['id'] ?? ''))),
                 'channeledAccountId' => fn ($r) => $r['recipients']['list_id'] ?? $accountId,
