@@ -303,13 +303,13 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     public static function getCanonicalMetricDictionary(): array
     {
         return [
-            'sends' => ['sends', 'emails_sent'],
-            'opens' => ['opens_total', 'opens_standard'],
-            'clicks' => ['clicks_total', 'clicks_unique'],
-            'bounces' => ['bounces_total', 'bounces_hard', 'bounces_soft'],
+            'sends' => ['sends'],
+            'opens' => ['opens_total'],
+            'clicks' => ['clicks_total'],
+            'bounces' => ['bounces_total'],
             'unsubscribes' => ['unsubscribes'],
             'orders' => ['orders_count'],
-            'revenue' => ['revenue', 'total_revenue'],
+            'revenue' => ['revenue'],
         ];
     }
 
