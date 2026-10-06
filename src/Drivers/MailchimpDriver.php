@@ -305,8 +305,13 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
         return [
             'sends' => ['sends'],
             'opens' => ['opens_total'],
+            'opens_standard' => ['opens_standard'],
+            'opens_proxy' => ['opens_proxy'],
             'clicks' => ['clicks_total'],
+            'clicks_unique' => ['clicks_unique'],
             'bounces' => ['bounces_total'],
+            'bounces_hard' => ['bounces_hard'],
+            'bounces_soft' => ['bounces_soft'],
             'unsubscribes' => ['unsubscribes'],
             'orders' => ['orders_count'],
             'revenue' => ['revenue'],
