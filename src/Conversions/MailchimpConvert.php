@@ -74,6 +74,10 @@ class MailchimpConvert
                 'folder_id' => fn ($r) => $r['settings']['folder_id'] ?? null,
                 'template_id' => fn ($r) => $r['settings']['template_id'] ?? null,
                 'emails_sent' => fn ($r) => $r['emails_sent'] ?? 0,
+                'data' => fn ($r) => array_merge($r, [
+                    'name' => $r['settings']['title'] ?? ($r['settings']['subject_line'] ?? ($r['title'] ?? ($r['id'] ?? ''))),
+                    'type' => $r['type'] ?? 'regular',
+                ]),
             ],
         ]);
     }

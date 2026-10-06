@@ -528,6 +528,14 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 $this->logger?->info("Automations activity stream skipped: " . $e->getMessage());
             }
 
+            // Ingest Campaign & Automation Entities into channeled_campaigns
+            if (!empty($allCampaignsToSync)) {
+                $campaignCollection = MailchimpConvert::campaigns($allCampaignsToSync, $accountId);
+                if ($this->dataProcessor && $campaignCollection->count() > 0) {
+                    ($this->dataProcessor)($campaignCollection, 'campaign');
+                }
+            }
+
             foreach ($allCampaignsToSync as $campaign) {
                 if ($shouldContinue && !$shouldContinue()) {
                     throw new Exception("Sync aborted by orchestrator.");
