@@ -75,13 +75,13 @@
             "source": {
                 "type": "git",
                 "url": "git@github.com:anibalealvarezs/api-driver-core.git",
-                "reference": "cb275997a0519c987d6e3019bbc297f4447f1e02"
+                "reference": "997b9d7d53fffd564b5aa02e75d629e8e31ff676"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://satis.anibalalvarez.com/dist/anibalealvarezs/api-driver-core/anibalealvarezs-api-driver-core-cb275997a0519c987d6e3019bbc297f4447f1e02-zip-fc0ea8.zip",
-                "reference": "cb275997a0519c987d6e3019bbc297f4447f1e02",
-                "shasum": "49eef424b4b91e82ae252c75bfdb20e68808ab72"
+                "url": "https://satis.anibalalvarez.com/dist/anibalealvarezs/api-driver-core/anibalealvarezs-api-driver-core-997b9d7d53fffd564b5aa02e75d629e8e31ff676-zip-9cb66a.zip",
+                "reference": "997b9d7d53fffd564b5aa02e75d629e8e31ff676",
+                "shasum": "3e544f8768e9980aafbd78fdb5df6954d85297bd"
             },
             "require": {
                 "anibalealvarezs/api-client-skeleton": "^1.0.0",
@@ -115,7 +115,7 @@
                 }
             ],
             "description": "Core interfaces and orchestration logic for APIs Hub drivers.",
-            "time": "2026-10-06T01:34:34+00:00"
+            "time": "2026-10-06T15:18:20+00:00"
         },
         {
             "name": "anibalealvarezs/mailchimp-api",
