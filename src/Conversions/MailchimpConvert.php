@@ -182,6 +182,7 @@ class MailchimpConvert
                     'ip' => $act['ip'] ?? null,
                     'url' => $act['url'] ?? null,
                     'type' => $act['type'] ?? null,
+                    'bounce_type' => $act['type'] ?? null,
                     'is_proxy' => $isProxy,
                 ];
             }
