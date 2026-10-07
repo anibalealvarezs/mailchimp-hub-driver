@@ -175,6 +175,7 @@ class MailchimpConvert
                     'channeled_account_id' => $listId,
                     'account_id' => $accountId,
                     'email_id' => $emailId,
+                    'identity_hash' => $emailId,
                     'action' => $action,
                     'name' => $action,
                     'timestamp' => $timestamp,
