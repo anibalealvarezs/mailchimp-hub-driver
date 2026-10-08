@@ -144,12 +144,21 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             return $currentConfig;
         }
 
-        // Flat structure (same as YAML file) - merge root-level fields
-        $merged = array_merge($currentConfig, $newData);
+        // Check if config uses the new nested structure (channels.mailchimp)
+        $isNested = isset($currentConfig['channels']['mailchimp']);
+        $targetConfig = $isNested ? $currentConfig['channels']['mailchimp'] : $currentConfig;
 
-        // Unpack audiences from assets.audiences to flat audiences
+        // Merge fields
+        $merged = array_merge($targetConfig, $newData);
+
+        // Unpack audiences
         $merged['audiences'] = $selectedAudiences;
         unset($merged['assets']);
+
+        if ($isNested) {
+            $currentConfig['channels']['mailchimp'] = $merged;
+            return $currentConfig;
+        }
 
         return $merged;
     }
