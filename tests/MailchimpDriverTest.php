@@ -28,6 +28,18 @@ class MailchimpDriverTest extends TestCase
         }
     }
 
+    public function testDailyUniqueOpenersUseRecipientIdentityWithinCampaign(): void
+    {
+        $engagement = MailchimpDriver::getPreAggregationRules()['campaign_engagement'];
+
+        $this->assertSame('campaign_id', $engagement['scope_field']);
+        $this->assertSame([
+            'condition' => ['action' => 'open'],
+            'field' => 'identity_hash',
+            'reducer' => 'count_distinct',
+        ], $engagement['metrics']['opens_unique_daily']);
+    }
+
     public function testStoreCredentialsUnpacksMultiAccountPayload(): void
     {
         putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);

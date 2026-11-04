@@ -336,6 +336,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 'metrics' => [
                     'sends' => ['condition' => ['action' => 'send'], 'reducer' => 'count'],
                     'opens_total' => ['condition' => ['action' => 'open'], 'reducer' => 'count'],
+                    'opens_unique_daily' => ['condition' => ['action' => 'open'], 'field' => 'identity_hash', 'reducer' => 'count_distinct'],
                     'opens_standard' => ['condition' => ['action' => 'open', 'is_proxy' => false], 'reducer' => 'count'],
                     'opens_proxy' => ['condition' => ['action' => 'open', 'is_proxy' => true], 'reducer' => 'count'],
                     'clicks_total' => ['condition' => ['action' => 'click'], 'reducer' => 'count', 'dimension_fields' => ['page' => 'url']],
