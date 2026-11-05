@@ -125,6 +125,7 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             'properties' => [
                 'token_path' => ['type' => 'string'],
                 'accounts' => ['type' => 'array'],
+                'sync_carts' => ['type' => 'boolean', 'default' => false],
             ],
         ];
     }
@@ -354,7 +355,8 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             'store_conversions' => [
                 'source_entity' => 'channeled_orders',
                 'scope_field' => 'store_id',
-                'identity_dimensions' => ['store_id' => 'store_id', 'currency' => 'currency'],
+                'identity_dimensions' => ['store_id' => 'store_platform_id', 'currency' => 'currency'],
+                'identity_dimension_rules' => ['currency' => ['uppercase' => true, 'pattern' => '/^[A-Z]{3}$/D']],
                 'account_platform_id_field' => 'audience_id',
                 'require_source_date' => true,
                 'metrics' => [
@@ -401,33 +403,30 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             $api = $this->getApi(['account_id' => $accountId]);
 
             // 1. Sync Audiences (Lists)
-            $api->getAllListsInfoAndProcess(function ($audiences) use ($accountId) {
+            $api->getAllListsInfoAndProcess(function ($audiences) use ($accountId, $shouldContinue, $config) {
+                if ($shouldContinue && !$shouldContinue()) throw new Exception('Entity sync cancelled.');
+                $audiences = array_values(array_filter($audiences, fn ($audience) => $this->audienceEnabled((string)$audience['id'], $config)));
                 $collection = MailchimpConvert::audiences($audiences, $accountId);
                 if ($this->dataProcessor && $collection->count() > 0) {
-                    ($this->dataProcessor)($collection, $this->logger);
+                    ($this->dataProcessor)($collection, 'account');
                 }
             });
 
-            // 2. Sync Connected Stores
-            $api->getAllEcommerceStoresAndProcess(function ($stores) use ($accountId) {
-                $collection = MailchimpConvert::stores($stores, $accountId);
-                if ($this->dataProcessor && $collection->count() > 0) {
-                    ($this->dataProcessor)($collection, $this->logger);
-                }
-            });
+            // Stores and their children share a single verified source namespace.
+            $this->syncCommerceEntities($api, (string)$accountId, $config, $shouldContinue);
 
             // 3. Sync Folders & Templates
             $api->getAllCampaignFoldersAndProcess(function ($folders) use ($accountId) {
                 $collection = MailchimpConvert::folders($folders, $accountId);
                 if ($this->dataProcessor && $collection->count() > 0) {
-                    ($this->dataProcessor)($collection, $this->logger);
+                    ($this->dataProcessor)($collection, 'folder');
                 }
             });
 
             $api->getAllTemplatesAndProcess(function ($templates) use ($accountId) {
                 $collection = MailchimpConvert::templates($templates, $accountId);
                 if ($this->dataProcessor && $collection->count() > 0) {
-                    ($this->dataProcessor)($collection, $this->logger);
+                    ($this->dataProcessor)($collection, 'template');
                 }
             });
 
@@ -622,25 +621,74 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 }
             }
 
-            // 2. Stream Connected Store Orders
-            $storesData = $api->getAllEcommerceStores();
-            foreach ($storesData['stores'] ?? [] as $store) {
-                $storeId = (string)($store['id'] ?? '');
-                if (empty($storeId)) {
-                    continue;
+            // Refresh all cached orders: late status/amount changes can affect old dates.
+            $api->getAllEcommerceStoresAndProcess(function (array $stores) use ($api, $accountId, $config, $shouldContinue): void {
+                foreach ($stores as $store) {
+                    if (!$this->audienceEnabled((string)($store['list_id'] ?? ''), $config)) continue;
+                    if ($shouldContinue && !$shouldContinue()) throw new Exception('Order sync cancelled.');
+                    ($this->dataProcessor)(MailchimpConvert::stores([$store], (string)$accountId), 'store');
+                    $api->getAllEcommerceOrdersAndProcess((string)$store['id'], function (array $orders) use ($store, $accountId, $shouldContinue): void {
+                        if ($shouldContinue && !$shouldContinue()) throw new Exception('Order sync cancelled.');
+                        $collection = MailchimpConvert::orders($orders, (string)$store['id'], (string)$accountId,
+                            isset($store['list_id']) ? (string)$store['list_id'] : null, $store['currency_code'] ?? null);
+                        if (!$collection->isEmpty()) ($this->dataProcessor)($collection, 'order');
+                    }, shouldContinue: $shouldContinue);
                 }
-
-                $audienceId = isset($store['list_id']) ? (string) $store['list_id'] : null;
-                $storeCurrency = isset($store['currency_code']) ? (string) $store['currency_code'] : null;
-                $api->getAllEcommerceOrdersAndProcess($storeId, function ($orders) use ($storeId, $accountId, $audienceId, $storeCurrency) {
-                    $ordersCollection = MailchimpConvert::orders($orders, $storeId, $accountId, $audienceId, $storeCurrency);
-                    if ($this->dataProcessor && $ordersCollection->count() > 0) {
-                        ($this->dataProcessor)($ordersCollection, 'order');
-                    }
-                }, batchSize: 1000);
-            }
+            }, shouldContinue: $shouldContinue);
         }
 
         return new Response(json_encode(['status' => 'success', 'message' => 'Mailchimp atomic events synced']), 200, ['Content-Type' => 'application/json']);
+    }
+
+    private function audienceEnabled(string $audienceId, array $config): bool
+    {
+        $channel = $config['channels']['mailchimp'] ?? $config;
+        if (!array_key_exists('audiences', $channel)) return true;
+        foreach ($channel['audiences'] as $audience) {
+            $id = is_array($audience) ? (string)($audience['id'] ?? '') : (string)$audience;
+            if ($id === $audienceId && (!is_array($audience) || ($audience['enabled'] ?? true))) return true;
+        }
+        return false;
+    }
+
+    private function syncCommerceEntities(MarketingApi $api, string $accountId, array $config, ?callable $shouldContinue): void
+    {
+        $api->getAllEcommerceStoresAndProcess(function (array $stores) use ($api, $accountId, $config, $shouldContinue): void {
+            foreach ($stores as $store) {
+                $storeId = (string)($store['id'] ?? '');
+                $audience = isset($store['list_id']) ? (string)$store['list_id'] : null;
+                if ($storeId === '' || !$this->audienceEnabled($audience ?? '', $config)) continue;
+                if ($shouldContinue && !$shouldContinue()) throw new Exception('Commerce entity sync cancelled.');
+                foreach (['getAllEcommerceProductsAndProcess', 'getAllEcommerceProductVariantsAndProcess', 'getAllEcommercePromoRulesAndProcess', 'getAllEcommercePromoCodes'] as $method) {
+                    if (!method_exists($api, $method)) throw new Exception('Install the Mailchimp ecommerce SDK expansion before synchronizing stores.');
+                }
+                ($this->dataProcessor)(MailchimpConvert::stores([$store], $accountId), 'store');
+                $api->getAllEcommerceProductsAndProcess($storeId, function (array $products) use ($api, $storeId, $accountId, $audience, $shouldContinue): void {
+                    ($this->dataProcessor)(MailchimpConvert::products($products, $storeId, $accountId, $audience), 'product');
+                    foreach ($products as $product) {
+                        $api->getAllEcommerceProductVariantsAndProcess($storeId, (string)$product['id'],
+                            function (array $variants) use ($product, $storeId, $accountId, $audience): void {
+                                $product['variants'] = $variants;
+                                ($this->dataProcessor)(MailchimpConvert::products([$product], $storeId, $accountId, $audience), 'product');
+                            }, shouldContinue: $shouldContinue);
+                    }
+                }, shouldContinue: $shouldContinue);
+                $api->getAllEcommerceCustomersAndProcess($storeId, function (array $customers) use ($storeId, $accountId, $audience): void {
+                    ($this->dataProcessor)(MailchimpConvert::customers($customers, $storeId, $accountId, $audience), 'customer');
+                }, shouldContinue: $shouldContinue);
+                $api->getAllEcommercePromoRulesAndProcess($storeId, function (array $rules) use ($api, $storeId, $accountId, $audience): void {
+                    foreach ($rules as &$rule) {
+                        $rule['codes'] = $api->getAllEcommercePromoCodes($storeId, (string)$rule['id'])['promo_codes'];
+                    }
+                    unset($rule);
+                    ($this->dataProcessor)(MailchimpConvert::promotions($rules, $storeId, $accountId, $audience), 'price_rule');
+                }, shouldContinue: $shouldContinue);
+                if (!empty(($config['channels']['mailchimp'] ?? $config)['sync_carts'])) {
+                    $api->getAllEcommerceCartsAndProcess($storeId, function (array $carts) use ($storeId, $accountId, $audience): void {
+                        ($this->dataProcessor)(MailchimpConvert::carts($carts, $storeId, $accountId, $audience), 'cart');
+                    }, shouldContinue: $shouldContinue);
+                }
+            }
+        }, shouldContinue: $shouldContinue);
     }
 }

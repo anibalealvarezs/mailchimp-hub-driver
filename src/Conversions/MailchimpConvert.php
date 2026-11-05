@@ -36,9 +36,16 @@ class MailchimpConvert
      */
     public static function stores(array $stores, string $accountId): ArrayCollection
     {
+        foreach ($stores as &$store) {
+            $store['source_store_id'] = (string) $store['id'];
+            $store['store_platform_id'] = self::commerceId($accountId, (string)$store['id'], 'store');
+            $store['account_id'] = $accountId;
+            $store['audience_id'] = $store['list_id'] ?? null;
+        }
+        unset($store);
         return UniversalEntityConverter::convert($stores, [
             'channel' => 'mailchimp',
-            'platform_id_field' => 'id',
+            'platform_id_field' => 'store_platform_id',
             'date_field' => 'created_at',
             'mapping' => [
                 'title' => 'name',
@@ -46,8 +53,8 @@ class MailchimpConvert
                 'account_id' => fn () => $accountId,
                 'domain' => fn ($r) => $r['domain'] ?? '',
                 'platform' => fn ($r) => $r['platform'] ?? 'custom',
-                'currency_code' => fn ($r) => $r['currency_code'] ?? 'USD',
-                'money_format' => fn ($r) => $r['money_format'] ?? '$',
+                'currency_code' => fn ($r) => $r['currency_code'] ?? null,
+                'money_format' => fn ($r) => $r['money_format'] ?? null,
             ],
         ]);
     }
@@ -308,6 +315,16 @@ class MailchimpConvert
             $order['source_order_id'] = (string) $order['id'];
             $order['account_id'] = $accountId;
             $order['currency'] = $order['currency_code'] ?? $storeCurrency;
+            $order['source_customer_id'] = $order['customer']['id'] ?? null;
+            $order['store_platform_id'] = self::commerceId($accountId, $storeId, 'store');
+            $order['_order_date'] = $order['processed_at_foreign'] ?? $order['created_at'] ?? null;
+            $order['scoped_customer_id'] = isset($order['customer']['id'])
+                ? self::commerceId($accountId, $storeId, (string)$order['customer']['id']) : null;
+            $order['scoped_lines'] = array_map(static fn (array $line): array => array_merge($line, [
+                'product_id' => isset($line['product_id']) ? self::commerceId($accountId, $storeId, (string)$line['product_id']) : null,
+                'variant_id' => isset($line['product_variant_id'], $line['product_id'])
+                    ? self::commerceId($accountId, $storeId, json_encode([$line['product_id'], $line['product_variant_id']])) : null,
+            ]), $order['lines'] ?? []);
             $order['total_amount'] = (float) ($order['order_total'] ?? 0);
         }
         unset($order);
@@ -315,17 +332,18 @@ class MailchimpConvert
         return UniversalEntityConverter::convert($orders, [
             'channel' => 'mailchimp',
             'platform_id_field' => 'store_order_key',
-            'date_field' => fn ($r) => $r['processed_at_foreign'] ?? $r['created_at'] ?? null,
+            'date_field' => '_order_date',
             'mapping' => [
                 'customer' => fn ($r) => !empty($r['customer']) ? (object) [
-                    'id' => $r['customer']['id'] ?? null,
-                    'email' => $r['customer']['email_address'] ?? null,
+                    'id' => $r['scoped_customer_id'] ?? null,
+                    'email' => isset($r['customer']['email_address']) ? strtolower(trim($r['customer']['email_address'])) : null,
                 ] : null,
-                'discountCodes' => fn ($r) => !empty($r['promos']) ? array_map(fn ($p) => $p['code'] ?? '', $r['promos']) : [],
-                'lineItems' => fn ($r) => !empty($r['lines']) ? array_map(fn ($l) => [
-                    'product_id' => $l['product_id'] ?? null,
-                    'variant_id' => $l['product_variant_id'] ?? null,
-                ], $r['lines']) : [],
+                'discountCodes' => fn ($r) => array_map(
+                    fn ($promo) => self::commerceId($accountId, $storeId, (string)($promo['code'] ?? '')),
+                    array_filter($r['promos'] ?? [], fn ($promo) => !empty($promo['code']))
+                ),
+                'lineItems' => 'scoped_lines',
+                'storePlatformId' => 'store_platform_id',
                 'store_id' => fn () => $storeId,
                 'audience_id' => fn () => $audienceId,
                 'source_order_id' => fn ($r) => (string) $r['id'],
@@ -340,6 +358,86 @@ class MailchimpConvert
                     ? md5(strtolower(trim($r['customer']['email_address'])))
                     : ($r['customer']['id'] ?? ''),
             ],
+        ]);
+    }
+
+    /** Stable provider-account/store namespace, also used by order relationships. */
+    public static function commerceId(string $accountId, string $storeId, string $sourceId): string
+    {
+        return hash('sha256', json_encode([$accountId, $storeId, $sourceId], JSON_THROW_ON_ERROR));
+    }
+
+    private static function commerceRows(array $rows, string $storeId, string $accountId, ?string $audienceId): array
+    {
+        $rows = array_values(array_filter($rows, static fn (array $row): bool => isset($row['id']) && (string)$row['id'] !== ''));
+        foreach ($rows as &$row) {
+            $row['source_id'] = (string)$row['id'];
+            $row['commerce_id'] = self::commerceId($accountId, $storeId, (string)$row['id']);
+            $row['store_id'] = $storeId;
+            $row['store_platform_id'] = self::commerceId($accountId, $storeId, 'store');
+            $row['account_id'] = $accountId;
+            $row['audience_id'] = $audienceId;
+            $row['_source_date'] = $row['created_at_foreign'] ?? $row['created_at'] ?? null;
+        }
+        unset($row);
+        return $rows;
+    }
+
+    public static function customers(array $customers, string $storeId, string $accountId, ?string $audienceId): ArrayCollection
+    {
+        $rows = self::commerceRows($customers, $storeId, $accountId, $audienceId);
+        foreach ($rows as &$row) {
+            $row['email'] = strtolower(trim((string)($row['email_address'] ?? '')));
+        }
+        unset($row);
+        return UniversalEntityConverter::convert($rows, [
+            'channel' => 'mailchimp', 'platform_id_field' => 'commerce_id', 'date_field' => '_source_date',
+            'mapping' => ['email' => 'email', 'storePlatformId' => 'store_platform_id'],
+        ]);
+    }
+
+    public static function products(array $products, string $storeId, string $accountId, ?string $audienceId): ArrayCollection
+    {
+        $rows = self::commerceRows($products, $storeId, $accountId, $audienceId);
+        foreach ($rows as &$row) {
+            $row['normalized_variants'] = array_map(static function (array $variant) use ($storeId, $accountId, $audienceId, $row): object {
+                return (object)[
+                    'platformId' => self::commerceId($accountId, $storeId, json_encode([$row['source_id'], $variant['id']])),
+                    'sku' => $variant['sku'] ?? null,
+                    'platformCreatedAt' => isset($variant['created_at']) ? new \DateTime($variant['created_at']) : null,
+                    'data' => array_merge($variant, [
+                        'store_id' => $storeId, 'account_id' => $accountId, 'audience_id' => $audienceId,
+                        'source_product_id' => $row['source_id'], 'source_id' => (string)$variant['id'],
+                    ]),
+                ];
+            }, $row['variants'] ?? []);
+        }
+        unset($row);
+        return UniversalEntityConverter::convert($rows, [
+            'channel' => 'mailchimp', 'platform_id_field' => 'commerce_id', 'date_field' => '_source_date',
+            'mapping' => ['title' => 'title', 'variants' => 'normalized_variants', 'storePlatformId' => 'store_platform_id'],
+        ]);
+    }
+
+    public static function carts(array $carts, string $storeId, string $accountId, ?string $audienceId): ArrayCollection
+    {
+        return UniversalEntityConverter::convert(self::commerceRows($carts, $storeId, $accountId, $audienceId), [
+            'channel' => 'mailchimp', 'platform_id_field' => 'commerce_id', 'date_field' => '_source_date',
+            'mapping' => ['storePlatformId' => 'store_platform_id'],
+        ]);
+    }
+
+    public static function promotions(array $rules, string $storeId, string $accountId, ?string $audienceId): ArrayCollection
+    {
+        foreach ($rules as &$rule) {
+            foreach ($rule['codes'] ?? [] as $i => $code) {
+                $rule['codes'][$i]['identity'] = self::commerceId($accountId, $storeId, (string)$code['code']);
+            }
+        }
+        unset($rule);
+        return UniversalEntityConverter::convert(self::commerceRows($rules, $storeId, $accountId, $audienceId), [
+            'channel' => 'mailchimp', 'platform_id_field' => 'commerce_id', 'date_field' => '_source_date',
+            'mapping' => ['storePlatformId' => 'store_platform_id'],
         ]);
     }
 }
