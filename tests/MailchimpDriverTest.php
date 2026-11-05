@@ -28,6 +28,28 @@ class MailchimpDriverTest extends TestCase
         }
     }
 
+    public function testOrdersPreserveStoreAudienceCurrencyAndScopedIdentity(): void
+    {
+        $order = ['id' => 'same-order', 'processed_at_foreign' => '2026-11-01T12:00:00+00:00',
+            'order_total' => 12.50, 'currency_code' => 'EUR'];
+        $first = MailchimpConvert::orders([$order], 'store-a', 'account', 'audience')->first();
+        $second = MailchimpConvert::orders([$order], 'store-b', 'account', 'audience')->first();
+        $repeat = MailchimpConvert::orders([$order], 'store-a', 'account', 'audience')->first();
+
+        self::assertNotSame($first->getPlatformId(), $second->getPlatformId());
+        self::assertSame($first->getPlatformId(), $repeat->getPlatformId());
+        self::assertSame('store-a', $first->store_id);
+        self::assertSame('audience', $first->audience_id);
+        self::assertSame('EUR', $first->currency);
+        self::assertSame('store-a', $first->getData()['store_id']);
+        self::assertSame('audience', $first->getData()['audience_id']);
+        self::assertSame(12.50, $first->getData()['total_amount']);
+        self::assertSame('same-order', $first->source_order_id);
+        self::assertSame('GBP', MailchimpConvert::orders([['id' => 'no-currency']], 'store-a', 'account', 'audience', 'GBP')->first()->getData()['currency']);
+        self::assertSame('2026-11-01', $first->platformCreatedAt->format('Y-m-d'));
+        self::assertNull(MailchimpConvert::orders([['id' => 'undated']], 'store-a', 'account', 'audience')->first()->platformCreatedAt);
+    }
+
     public function testDailyUniqueOpenersUseRecipientIdentityWithinCampaign(): void
     {
         $engagement = MailchimpDriver::getPreAggregationRules()['campaign_engagement'];
@@ -166,7 +188,7 @@ class MailchimpDriverTest extends TestCase
 
         $convertedOrders = MailchimpConvert::orders($orders, 'store_abc', 'acc_1');
         $this->assertCount(1, $convertedOrders);
-        $this->assertEquals('ord_999', $convertedOrders->first()->getPlatformId());
+        $this->assertEquals(hash('sha256', json_encode(['acc_1', 'store_abc', 'ord_999'])), $convertedOrders->first()->getPlatformId());
         $this->assertEquals(md5('buyer@example.com'), $convertedOrders->first()->identity_hash);
 
         // Test sentToEvents

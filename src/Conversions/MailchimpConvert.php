@@ -297,12 +297,25 @@ class MailchimpConvert
     /**
      * Converts connected store orders into ChanneledOrder entities.
      */
-    public static function orders(array $orders, string $storeId, string $accountId): ArrayCollection
+    public static function orders(array $orders, string $storeId, string $accountId, ?string $audienceId = null, ?string $storeCurrency = null): ArrayCollection
     {
+        $orders = array_values(array_filter($orders, static fn (array $order): bool =>
+            isset($order['id']) && (string) $order['id'] !== ''));
+        foreach ($orders as &$order) {
+            $order['store_order_key'] = hash('sha256', json_encode([$accountId, $storeId, (string) $order['id']], JSON_THROW_ON_ERROR));
+            $order['store_id'] = $storeId;
+            $order['audience_id'] = $audienceId;
+            $order['source_order_id'] = (string) $order['id'];
+            $order['account_id'] = $accountId;
+            $order['currency'] = $order['currency_code'] ?? $storeCurrency;
+            $order['total_amount'] = (float) ($order['order_total'] ?? 0);
+        }
+        unset($order);
+
         return UniversalEntityConverter::convert($orders, [
             'channel' => 'mailchimp',
-            'platform_id_field' => 'id',
-            'date_field' => 'created_at',
+            'platform_id_field' => 'store_order_key',
+            'date_field' => fn ($r) => $r['processed_at_foreign'] ?? $r['created_at'] ?? null,
             'mapping' => [
                 'customer' => fn ($r) => !empty($r['customer']) ? (object) [
                     'id' => $r['customer']['id'] ?? null,
@@ -314,12 +327,14 @@ class MailchimpConvert
                     'variant_id' => $l['product_variant_id'] ?? null,
                 ], $r['lines']) : [],
                 'store_id' => fn () => $storeId,
+                'audience_id' => fn () => $audienceId,
+                'source_order_id' => fn ($r) => (string) $r['id'],
                 'account_id' => fn () => $accountId,
                 'campaign_id' => fn ($r) => $r['campaign_id'] ?? null,
                 'total_amount' => fn ($r) => (float) ($r['order_total'] ?? 0.0),
                 'tax_total' => fn ($r) => (float) ($r['tax_total'] ?? 0.0),
                 'shipping_total' => fn ($r) => (float) ($r['shipping_total'] ?? 0.0),
-                'currency' => fn ($r) => $r['currency_code'] ?? 'USD',
+                'currency' => fn ($r) => $r['currency'] ?? null,
                 'financial_status' => fn ($r) => $r['financial_status'] ?? 'paid',
                 'identity_hash' => fn ($r) => !empty($r['customer']['email_address'])
                     ? md5(strtolower(trim($r['customer']['email_address'])))

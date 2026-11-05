@@ -354,6 +354,9 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             'store_conversions' => [
                 'source_entity' => 'channeled_orders',
                 'scope_field' => 'store_id',
+                'identity_dimensions' => ['store_id' => 'store_id', 'currency' => 'currency'],
+                'account_platform_id_field' => 'audience_id',
+                'require_source_date' => true,
                 'metrics' => [
                     'orders_count' => ['field' => 'platform_id', 'reducer' => 'count_distinct'],
                     'revenue' => ['field' => 'total_amount', 'reducer' => 'sum'],
@@ -627,8 +630,10 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                     continue;
                 }
 
-                $api->getAllEcommerceOrdersAndProcess($storeId, function ($orders) use ($storeId, $accountId) {
-                    $ordersCollection = MailchimpConvert::orders($orders, $storeId, $accountId);
+                $audienceId = isset($store['list_id']) ? (string) $store['list_id'] : null;
+                $storeCurrency = isset($store['currency_code']) ? (string) $store['currency_code'] : null;
+                $api->getAllEcommerceOrdersAndProcess($storeId, function ($orders) use ($storeId, $accountId, $audienceId, $storeCurrency) {
+                    $ordersCollection = MailchimpConvert::orders($orders, $storeId, $accountId, $audienceId, $storeCurrency);
                     if ($this->dataProcessor && $ordersCollection->count() > 0) {
                         ($this->dataProcessor)($ordersCollection, 'order');
                     }
