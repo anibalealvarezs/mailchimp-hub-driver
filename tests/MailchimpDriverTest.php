@@ -124,6 +124,37 @@ class MailchimpDriverTest extends TestCase
         self::assertCount(1, $batches['price_rule'][0]->first()->getData()['codes']);
     }
 
+    public function testMetricSyncPersistsAudienceBeforeStoresWithoutEntitySync(): void
+    {
+        $auth = new MailchimpAuthProvider($this->tempTokenPath);
+        $auth->storeAccountCredentials('account', ['api_key' => 'fixture-us1']);
+        $api = $this->createMock(\Anibalealvarezs\MailchimpApi\Services\Marketing\MarketingApi::class);
+        $api->expects(self::once())->method('getAllListsInfoAndProcess')
+            ->with(self::isType('callable'), true)
+            ->willReturnCallback(static function (callable $callback): void {
+                $callback([['id' => 'allowed', 'name' => 'Audience'], ['id' => 'hidden']]);
+            });
+        $api->method('getAllEcommerceStoresAndProcess')->willReturnCallback(static function (callable $callback): void {
+            $callback([['id' => 'hidden-store', 'list_id' => 'hidden']]);
+            $callback([['id' => 'a', 'list_id' => 'allowed'], ['id' => 'b', 'list_id' => 'allowed']]);
+        });
+        $api->expects(self::exactly(2))->method('getAllEcommerceOrdersAndProcess')
+            ->willReturnCallback(static function (string $store, callable $callback): void {
+                $callback([['id' => 'order', 'order_total' => 5]]);
+            });
+        $driver = $this->getMockBuilder(MailchimpDriver::class)->setConstructorArgs([$auth])->onlyMethods(['getApi'])->getMock();
+        $driver->method('getApi')->willReturn($api);
+        $types = [];
+        $driver->setDataProcessor(static function ($records, string $type) use (&$types): void {
+            $types[] = $type;
+            self::assertCount(1, $records);
+            if ($type === 'account') self::assertSame('account', $records->first()->account_id);
+        });
+        $driver->sync(new \DateTime('2026-11-01'), new \DateTime('2026-11-02'),
+            ['audiences' => [['id' => 'allowed', 'enabled' => true]]], static fn (): bool => true);
+        self::assertSame(['account', 'store', 'order', 'store', 'order'], $types);
+    }
+
     public function testStoreCredentialsUnpacksMultiAccountPayload(): void
     {
         putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);

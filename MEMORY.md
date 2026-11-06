@@ -30,3 +30,5 @@
 - `MailchimpConvert::orders()` (2026-10-01): Added structured mappings for `customer` (object with `id` and `email`), `discountCodes` (array from `promos`), and `lineItems` (array of `product_id` and `variant_id` from `lines`) to match `OrderProcessor` expectations.
 
 - Store orders (2026-11-05): orders use account+store+source-order hash identities and persist store_id, audience_id, source_order_id, currency, and total_amount in raw data consumed by OrderProcessor. Source date is processed_at_foreign with created_at fallback. Currency uses order/store source values. Store rollup declares identity_dimensions (store_id/currency), audience account lookup, and required source date. Historical identity collisions require source replay. Driver tests cover these fields and repeat conversion.
+
+- 2026-11-06 store-parent ordering fix: metric/order sync lazily streams authoritative ecommerce audiences once per provider account before the first enabled store. It no longer depends on the entity job running first. Audience permissions and cancellation checks remain active; no fabricated parents or relaxed worker ownership checks. Driver suite: 15 tests, 95 assertions.

@@ -66,3 +66,7 @@ Primary source references used for the endpoint model are the
 [order resource](https://mailchimp.com/developer/marketing/api/e-commerce/orders/get-store-order),
 [variant endpoint](https://mailchimp.com/developer/marketing/api/ecommerce/list-store-product-variants)
 and [promo rule resource](https://mailchimp.com/developer/marketing/api/e-commerce/promo-rules/get-store-promo-rule).
+
+### Metric-job parent ordering
+
+Order sync persists enabled ecommerce audiences from Mailchimp before stores, once per provider account when an enabled store is encountered. Historical metric jobs therefore work before the separate entity sync. Provider/store/audience ownership validation remains enforced by the worker.

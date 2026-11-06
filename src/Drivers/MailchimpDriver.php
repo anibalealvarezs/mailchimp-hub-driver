@@ -642,11 +642,22 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 }
             }
 
+            // Metric jobs may run before entity jobs: persist authoritative parents first.
+            $commerceAudiencesLoaded = false;
             // Refresh all cached orders: late status/amount changes can affect old dates.
-            $api->getAllEcommerceStoresAndProcess(function (array $stores) use ($api, $accountId, $config, $shouldContinue): void {
+            $api->getAllEcommerceStoresAndProcess(function (array $stores) use ($api, $accountId, $config, $shouldContinue, &$commerceAudiencesLoaded): void {
                 foreach ($stores as $store) {
                     if (!$this->audienceEnabled((string)($store['list_id'] ?? ''), $config)) continue;
                     if ($shouldContinue && !$shouldContinue()) throw new Exception('Order sync cancelled.');
+                    if (!$commerceAudiencesLoaded) {
+                        $api->getAllListsInfoAndProcess(function (array $audiences) use ($accountId, $config, $shouldContinue): void {
+                            if ($shouldContinue && !$shouldContinue()) throw new Exception('Order sync cancelled.');
+                            $audiences = array_filter($audiences, fn (array $audience): bool =>
+                                $this->audienceEnabled((string)($audience['id'] ?? ''), $config));
+                            if ($audiences) ($this->dataProcessor)(MailchimpConvert::audiences(array_values($audiences), (string)$accountId), 'account');
+                        }, hasEcommerceStore: true);
+                        $commerceAudiencesLoaded = true;
+                    }
                     ($this->dataProcessor)(MailchimpConvert::stores([$store], (string)$accountId), 'store');
                     $api->getAllEcommerceOrdersAndProcess((string)$store['id'], function (array $orders) use ($store, $accountId, $shouldContinue): void {
                         if ($shouldContinue && !$shouldContinue()) throw new Exception('Order sync cancelled.');
