@@ -15,6 +15,9 @@
 
 ## Current notes
 
+- Commerce expansion (2026-11-06): source snapshots cover stores, store customers, products with separately paged variants, promotions with separately paged codes, and optional carts (`sync_carts` defaults false). Callback entity types are explicit strings. Promo code identities include parent rule and source ID. See `docs/surface-manifest.md` for field and coverage contracts.
+- Store rollup rules require scoped order identity, known total, currency, source date and persisted store ownership. `refresh_all_source_dates` tells the worker to rebuild historical snapshot dates outside a sync window. Source absence is retained conservatively, and no net-revenue or abandoned-cart policy is inferred.
+
 - Mailchimp driver connects `apis-hub` orchestrator with `mailchimp-api-anibal` SDK.
 - Auth Provider implements `MultiAccountAuthProviderInterface` using file-based token storage (`storage/tokens/mailchimp_tokens.json`) keyed by account ID.
 - Pre-aggregation provider implements `PreAggregationProviderInterface` declaring 30-day attribution windows and metric rollup rules for `sends`, `opens_standard`, `opens_proxy`, `clicks_total`, `clicks_unique`, `bounces_hard`, `bounces_soft`, `unsubscribes`, `orders_count`, and `revenue`.

@@ -359,6 +359,13 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 'identity_dimension_rules' => ['currency' => ['uppercase' => true, 'pattern' => '/^[A-Z]{3}$/D']],
                 'account_platform_id_field' => 'audience_id',
                 'require_source_date' => true,
+                'record_identity_field' => 'store_order_key',
+                'refresh_all_source_dates' => true,
+                'required_fields' => ['total_amount'],
+                'account_relationship' => [
+                    'table' => 'channeled_stores', 'foreign_key' => 'channeled_store_id',
+                    'account_column' => 'channeled_account_id',
+                ],
                 'metrics' => [
                     'orders_count' => ['field' => 'platform_id', 'reducer' => 'count_distinct'],
                     'revenue' => ['field' => 'total_amount', 'reducer' => 'sum'],
@@ -676,9 +683,13 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 $api->getAllEcommerceCustomersAndProcess($storeId, function (array $customers) use ($storeId, $accountId, $audience): void {
                     ($this->dataProcessor)(MailchimpConvert::customers($customers, $storeId, $accountId, $audience), 'customer');
                 }, shouldContinue: $shouldContinue);
-                $api->getAllEcommercePromoRulesAndProcess($storeId, function (array $rules) use ($api, $storeId, $accountId, $audience): void {
+                $api->getAllEcommercePromoRulesAndProcess($storeId, function (array $rules) use ($api, $storeId, $accountId, $audience, $shouldContinue): void {
                     foreach ($rules as &$rule) {
-                        $rule['codes'] = $api->getAllEcommercePromoCodes($storeId, (string)$rule['id'])['promo_codes'];
+                        $rule['codes'] = [];
+                        $api->getAllEcommercePromoCodesAndProcess($storeId, (string)$rule['id'],
+                            static function (array $codes) use (&$rule): void {
+                                array_push($rule['codes'], ...$codes);
+                            }, shouldContinue: $shouldContinue);
                     }
                     unset($rule);
                     ($this->dataProcessor)(MailchimpConvert::promotions($rules, $storeId, $accountId, $audience), 'price_rule');

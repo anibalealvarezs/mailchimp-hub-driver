@@ -325,7 +325,8 @@ class MailchimpConvert
                 'variant_id' => isset($line['product_variant_id'], $line['product_id'])
                     ? self::commerceId($accountId, $storeId, json_encode([$line['product_id'], $line['product_variant_id']])) : null,
             ]), $order['lines'] ?? []);
-            $order['total_amount'] = (float) ($order['order_total'] ?? 0);
+            $order['total_amount'] = isset($order['order_total']) && is_numeric($order['order_total'])
+                ? (float)$order['order_total'] : null;
         }
         unset($order);
 
@@ -349,11 +350,11 @@ class MailchimpConvert
                 'source_order_id' => fn ($r) => (string) $r['id'],
                 'account_id' => fn () => $accountId,
                 'campaign_id' => fn ($r) => $r['campaign_id'] ?? null,
-                'total_amount' => fn ($r) => (float) ($r['order_total'] ?? 0.0),
-                'tax_total' => fn ($r) => (float) ($r['tax_total'] ?? 0.0),
-                'shipping_total' => fn ($r) => (float) ($r['shipping_total'] ?? 0.0),
+                'total_amount' => 'total_amount',
+                'tax_total' => fn ($r) => isset($r['tax_total']) && is_numeric($r['tax_total']) ? (float)$r['tax_total'] : null,
+                'shipping_total' => fn ($r) => isset($r['shipping_total']) && is_numeric($r['shipping_total']) ? (float)$r['shipping_total'] : null,
                 'currency' => fn ($r) => $r['currency'] ?? null,
-                'financial_status' => fn ($r) => $r['financial_status'] ?? 'paid',
+                'financial_status' => fn ($r) => $r['financial_status'] ?? null,
                 'identity_hash' => fn ($r) => !empty($r['customer']['email_address'])
                     ? md5(strtolower(trim($r['customer']['email_address'])))
                     : ($r['customer']['id'] ?? ''),
@@ -431,7 +432,9 @@ class MailchimpConvert
     {
         foreach ($rules as &$rule) {
             foreach ($rule['codes'] ?? [] as $i => $code) {
-                $rule['codes'][$i]['identity'] = self::commerceId($accountId, $storeId, (string)$code['code']);
+                $rule['codes'][$i]['identity'] = self::commerceId(
+                    $accountId, $storeId, json_encode(['promo-code', (string)$rule['id'], (string)$code['id']], JSON_THROW_ON_ERROR)
+                );
             }
         }
         unset($rule);
