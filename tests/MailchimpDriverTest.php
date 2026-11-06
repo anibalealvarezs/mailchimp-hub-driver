@@ -113,7 +113,10 @@ class MailchimpDriverTest extends TestCase
         $driver->method('getApi')->willReturn($api);
         $batches = [];
         $driver->setDataProcessor(static function ($records, string $type) use (&$batches): void { $batches[$type][] = $records; });
-        $driver->syncEntities(['audiences' => [['id' => 'allowed', 'enabled' => true]]], static fn (): bool => true);
+        self::assertSame('entities', MailchimpDriver::getInstanceRules()['entities_sync']);
+        $api->expects(self::never())->method('getAllEcommerceOrdersAndProcess');
+        $driver->sync(new \DateTime('2026-11-01'), new \DateTime('2026-11-02'),
+            ['entity' => 'entities', 'audiences' => [['id' => 'allowed', 'enabled' => true]]], static fn (): bool => true);
         self::assertSame(['account', 'store', 'product', 'customer', 'price_rule'], array_keys($batches));
         self::assertCount(1, $batches['account'][0]);
         self::assertCount(1, $batches['store']);

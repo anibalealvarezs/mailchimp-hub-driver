@@ -31,6 +31,11 @@ in cached data. A store must resolve to an audience under the provider account.
 Enabled-audience selection applies before syncing store children. Carts default
 to disabled through `sync_carts`.
 
+Normal scheduling declares `entities_sync: entities`. The driver routes those jobs
+through its entity importer, while ordinary metric jobs import orders and events.
+The instance generator gives metric jobs their existing entity-job dependency.
+This dispatch must be present in the released driver used by new projects.
+
 | Field | Source | Null/identity policy |
 |---|---|---|
 | Store name/domain/platform | store response | preserve supplied metadata |

@@ -94,6 +94,16 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
         return 2;
     }
 
+    public static function getInstanceRules(): array
+    {
+        return [
+            'history_months' => 6,
+            'entities_sync' => 'entities',
+            'recent_cron_hour' => 10,
+            'recent_cron_minute' => 0,
+        ];
+    }
+
     public static function getChannelIcon(): string
     {
         return 'M';
@@ -501,6 +511,10 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     ): Response {
         if (!$this->dataProcessor) {
             throw new Exception("DataProcessor not set for MailchimpDriver");
+        }
+
+        if (($config['entity'] ?? null) === 'entities') {
+            return $this->syncEntities($config, $shouldContinue);
         }
 
         $auth = $this->authProvider instanceof MultiAccountAuthProviderInterface

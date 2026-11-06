@@ -15,6 +15,8 @@
 
 ## Current notes
 
+- Fresh-project acceptance (2026-11-06): declare `getInstanceRules()['entities_sync'] = 'entities'` and dispatch `sync()` requests carrying `entity=entities` to `syncEntities()`. Otherwise ordinary scheduling never calls the expanded importer. These jobs must not ingest orders. Worker account persistence must consume the normalized audience `account_id`, since it is mapped outside the raw provider payload. Driver regression tests exercise the real entity-job dispatch.
+
 - Commerce expansion (2026-11-06): source snapshots cover stores, store customers, products with separately paged variants, promotions with separately paged codes, and optional carts (`sync_carts` defaults false). Callback entity types are explicit strings. Promo code identities include parent rule and source ID. See `docs/surface-manifest.md` for field and coverage contracts.
 - Store rollup rules require scoped order identity, known total, currency, source date and persisted store ownership. `refresh_all_source_dates` tells the worker to rebuild historical snapshot dates outside a sync window. Source absence is retained conservatively, and no net-revenue or abandoned-cart policy is inferred.
 
