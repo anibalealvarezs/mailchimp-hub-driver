@@ -62,6 +62,65 @@ class MailchimpDriverTest extends TestCase
         ], $engagement['metrics']['opens_unique_daily']);
     }
 
+    public function testCommerceIdentitiesPreserveParentsAndUnknownAmounts(): void
+    {
+        $unknown = MailchimpConvert::orders([['id' => 'unknown']], 'store', 'account', 'audience')->first();
+        self::assertNull($unknown->getData()['total_amount']);
+        self::assertNull($unknown->financial_status);
+        $product = MailchimpConvert::products([['id' => 'product', 'title' => 'Product',
+            'variants' => [['id' => 'variant', 'sku' => 'SKU']]]], 'store', 'account', 'audience')->first();
+        $order = MailchimpConvert::orders([['id' => 'order', 'order_total' => 0,
+            'lines' => [['product_id' => 'product', 'product_variant_id' => 'variant']]]], 'store', 'account', 'audience')->first();
+        self::assertSame($product->getPlatformId(), $order->lineItems[0]['product_id']);
+        self::assertSame($product->variants[0]->platformId, $order->lineItems[0]['variant_id']);
+        self::assertSame(0.0, $order->getData()['total_amount']);
+        $rules = MailchimpConvert::promotions([
+            ['id' => 'rule-a', 'codes' => [['id' => 'same-id', 'code' => 'SAME']]],
+            ['id' => 'rule-b', 'codes' => [['id' => 'same-id', 'code' => 'SAME']]],
+        ], 'store', 'account', 'audience')->toArray();
+        self::assertNotSame($rules[0]->getData()['codes'][0]['identity'], $rules[1]->getData()['codes'][0]['identity']);
+    }
+
+    public function testEntitySyncScopesStoresAndUsesExplicitCommerceCallbacks(): void
+    {
+        $auth = new MailchimpAuthProvider($this->tempTokenPath);
+        $auth->storeAccountCredentials('account', ['api_key' => 'fixture-us1']);
+        $api = $this->createMock(\Anibalealvarezs\MailchimpApi\Services\Marketing\MarketingApi::class);
+        $api->method('getAllListsInfoAndProcess')->willReturnCallback(static function (callable $callback): void {
+            $callback([['id' => 'allowed', 'name' => 'Allowed'], ['id' => 'hidden', 'name' => 'Hidden']]);
+        });
+        $api->method('getAllEcommerceStoresAndProcess')->willReturnCallback(static function (callable $callback): void {
+            $callback([['id' => 'store', 'list_id' => 'allowed'], ['id' => 'hidden-store', 'list_id' => 'hidden']]);
+        });
+        $api->expects(self::once())->method('getAllEcommerceProductsAndProcess')->with('store', self::isType('callable'), 1000, self::isType('callable'))
+            ->willReturnCallback(static function (string $store, callable $callback): void {
+                $callback([['id' => 'product', 'title' => 'Product']]);
+            });
+        $api->expects(self::once())->method('getAllEcommerceProductVariantsAndProcess')->willReturnCallback(
+            static function (string $store, string $product, callable $callback): void { $callback([['id' => 'variant']]); }
+        );
+        $api->expects(self::once())->method('getAllEcommerceCustomersAndProcess')->willReturnCallback(
+            static function (string $store, callable $callback): void { $callback([['id' => 'customer']]); }
+        );
+        $api->expects(self::once())->method('getAllEcommercePromoRulesAndProcess')->willReturnCallback(
+            static function (string $store, callable $callback): void { $callback([['id' => 'rule']]); }
+        );
+        $api->expects(self::once())->method('getAllEcommercePromoCodesAndProcess')->willReturnCallback(
+            static function (string $store, string $rule, callable $callback): void { $callback([['id' => 'code', 'code' => 'SALE']]); }
+        );
+        $api->expects(self::never())->method('getAllEcommerceCartsAndProcess');
+        $driver = $this->getMockBuilder(MailchimpDriver::class)->setConstructorArgs([$auth])->onlyMethods(['getApi'])->getMock();
+        $driver->method('getApi')->willReturn($api);
+        $batches = [];
+        $driver->setDataProcessor(static function ($records, string $type) use (&$batches): void { $batches[$type][] = $records; });
+        $driver->syncEntities(['audiences' => [['id' => 'allowed', 'enabled' => true]]], static fn (): bool => true);
+        self::assertSame(['account', 'store', 'product', 'customer', 'price_rule'], array_keys($batches));
+        self::assertCount(1, $batches['account'][0]);
+        self::assertCount(1, $batches['store']);
+        self::assertCount(1, $batches['product'][1]->first()->variants);
+        self::assertCount(1, $batches['price_rule'][0]->first()->getData()['codes']);
+    }
+
     public function testStoreCredentialsUnpacksMultiAccountPayload(): void
     {
         putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);
