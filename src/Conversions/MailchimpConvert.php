@@ -384,6 +384,51 @@ class MailchimpConvert
         return $rows;
     }
 
+    /**
+     * Converts Mailchimp list/audience members (subscribers/contacts) into UniversalEntity objects.
+     */
+    public static function listMembers(array $members, string $listId, string $accountId): ArrayCollection
+    {
+        $filtered = array_values(array_filter($members, static fn (array $m): bool =>
+            !empty($m['email_address'])
+        ));
+
+        foreach ($filtered as &$member) {
+            $email = strtolower(trim((string)$member['email_address']));
+            $member['email'] = $email;
+            $member['list_id'] = $listId;
+            $member['audience_id'] = $listId;
+            $member['account_id'] = $accountId;
+            $member['_platform_id'] = (string)($member['id'] ?? md5($email));
+            $member['_date'] = !empty($member['timestamp_opt'])
+                ? $member['timestamp_opt']
+                : ($member['timestamp_signup'] ?? ($member['last_changed'] ?? null));
+            $member['data'] = array_merge($member, [
+                'audience_id' => $listId,
+                'list_id'     => $listId,
+                'account_id'  => $accountId,
+            ]);
+        }
+        unset($member);
+
+        return UniversalEntityConverter::convert($filtered, [
+            'channel' => 'mailchimp',
+            'platform_id_field' => '_platform_id',
+            'date_field' => '_date',
+            'mapping' => [
+                'email' => 'email',
+                'channeledAccountId' => fn () => $listId,
+                'data' => 'data',
+            ],
+            'context' => [
+                'channeledAccount' => (object) [
+                    'getPlatformId' => fn () => $listId,
+                    'platform_id'   => $listId,
+                ],
+            ],
+        ]);
+    }
+
     public static function customers(array $customers, string $storeId, string $accountId, ?string $audienceId): ArrayCollection
     {
         $rows = self::commerceRows($customers, $storeId, $accountId, $audienceId);

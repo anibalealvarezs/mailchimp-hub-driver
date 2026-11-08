@@ -419,13 +419,37 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
             $api = $this->getApi(['account_id' => $accountId]);
 
-            // 1. Sync Audiences (Lists)
-            $api->getAllListsInfoAndProcess(function ($audiences) use ($accountId, $shouldContinue, $config) {
+            // 1. Sync Audiences (Lists) and their Members (Contacts/Customers)
+            $api->getAllListsInfoAndProcess(function ($audiences) use ($api, $accountId, $shouldContinue, $config) {
                 if ($shouldContinue && !$shouldContinue()) throw new Exception('Entity sync cancelled.');
                 $audiences = array_values(array_filter($audiences, fn ($audience) => $this->audienceEnabled((string)$audience['id'], $config)));
                 $collection = MailchimpConvert::audiences($audiences, $accountId);
                 if ($this->dataProcessor && $collection->count() > 0) {
                     ($this->dataProcessor)($collection, 'account');
+                }
+
+                // Ingest list members for each enabled audience
+                foreach ($audiences as $audience) {
+                    if ($shouldContinue && !$shouldContinue()) throw new Exception('Entity sync cancelled.');
+                    $listId = (string)($audience['id'] ?? '');
+                    if ($listId === '') continue;
+
+                    try {
+                        $api->getAllListMembersInfoAndProcess(
+                            callback: function (array $members) use ($listId, $accountId, $shouldContinue): void {
+                                if ($shouldContinue && !$shouldContinue()) throw new Exception('Entity sync cancelled.');
+                                $membersCollection = MailchimpConvert::listMembers($members, $listId, $accountId);
+                                if ($this->dataProcessor && $membersCollection->count() > 0) {
+                                    ($this->dataProcessor)($membersCollection, 'customer');
+                                }
+                            },
+                            listId: $listId,
+                            status: null, // fetch all statuses: subscribed, unsubscribed, cleaned, pending
+                            batchSize: 1000
+                        );
+                    } catch (Exception $e) {
+                        $this->logger?->warning("Failed syncing members for Mailchimp list {$listId}: " . $e->getMessage());
+                    }
                 }
             });
 
