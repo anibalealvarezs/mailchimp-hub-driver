@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Anibalealvarezs\MailchimpHubDriver\Drivers;
 
+use Anibalealvarezs\ApiDriverCore\Classes\AggregationProfileTemplates;
+use Anibalealvarezs\ApiDriverCore\Interfaces\AggregationProfileProviderInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\AuthProviderInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\CanonicalMetricDictionaryProviderInterface;
 use Anibalealvarezs\ApiDriverCore\Interfaces\ChanneledAccountableInterface;
@@ -19,7 +21,7 @@ use Exception;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
-class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInterface, CanonicalMetricDictionaryProviderInterface, ChanneledAccountableInterface
+class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInterface, AggregationProfileProviderInterface, CanonicalMetricDictionaryProviderInterface, ChanneledAccountableInterface
 {
     use SyncDriverTrait;
 
@@ -112,6 +114,263 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     public static function getPlatformEntityIdField(): string
     {
         return 'platform_id';
+    }
+
+    public static function getAggregationProfiles(): array
+    {
+        return [
+            AggregationProfileTemplates::storeProfile(
+                channel: 'mailchimp',
+                key: 'mailchimp_commerce_and_campaigns',
+                label: 'Mailchimp Commerce & Campaigns',
+                overrides: [
+                    'metric_definitions' => self::getEntityMetricDefinitions(),
+                ]
+            ),
+        ];
+    }
+
+    /**
+     * Declares verified entity-backed metrics for Mailchimp (commerce, customers, products, promotions, campaigns, events).
+     */
+    public static function getEntityMetricDefinitions(): array
+    {
+        $orderEntity = [
+            'version' => 1,
+            'producer' => 'catalog_entity@1',
+            'entity_type' => 'orders',
+            'query' => [
+                'temporal_grains' => ['daily', 'monthly', 'lifetime'],
+                'breakdowns' => ['store'],
+                'dimensions' => ['store'],
+                'filters' => ['store' => ['eq', 'in'], 'product' => ['eq', 'in']],
+            ],
+        ];
+        $storeLifetime = [
+            'version' => 1,
+            'producer' => 'catalog_entity@1',
+            'query' => [
+                'temporal_grains' => ['lifetime'],
+                'breakdowns' => ['store'],
+                'dimensions' => ['store'],
+                'filters' => ['store' => ['eq', 'in']],
+            ],
+        ];
+        $eventQuery = [
+            'version' => 1,
+            'producer' => 'catalog_entity@1',
+            'entity_type' => 'events',
+            'query' => [
+                'temporal_grains' => ['daily', 'monthly', 'lifetime'],
+                'breakdowns' => ['action'],
+                'dimensions' => ['action'],
+                'filters' => [],
+            ],
+        ];
+
+        return [
+            // ── Orders (8) ──
+            'orders.source_orders' => $orderEntity + [
+                'measure' => 'order_count',
+                'label' => 'Synced orders',
+                'unit' => 'orders',
+                'reducer' => 'sum',
+            ],
+            'orders.canonical_orders' => $orderEntity + [
+                'measure' => 'canonical_order_count',
+                'label' => 'Distinct canonical orders',
+                'unit' => 'orders',
+                'reducer' => 'count_distinct',
+            ],
+            'orders.identified_buyers' => $orderEntity + [
+                'measure' => 'unique_customers',
+                'label' => 'Unique buying customers',
+                'unit' => 'buyers',
+                'reducer' => 'count_distinct',
+            ],
+            'orders.order_revenue' => $orderEntity + [
+                'measure' => 'revenue',
+                'label' => 'Synced order total',
+                'unit' => 'currency',
+                'reducer' => 'sum',
+            ],
+            'orders.subtotal' => $orderEntity + [
+                'measure' => 'subtotal',
+                'label' => 'Order subtotal',
+                'unit' => 'currency',
+                'reducer' => 'sum',
+            ],
+            'orders.tax' => $orderEntity + [
+                'measure' => 'total_tax',
+                'label' => 'Order tax',
+                'unit' => 'currency',
+                'reducer' => 'sum',
+            ],
+            'orders.discount_amount' => $orderEntity + [
+                'measure' => 'total_discount',
+                'label' => 'Order discount amount',
+                'unit' => 'currency',
+                'reducer' => 'sum',
+            ],
+            'orders.average_order_value' => $orderEntity + [
+                'measure' => 'aov',
+                'label' => 'Average order value from synced orders',
+                'unit' => 'currency_per_order',
+                'reducer' => 'ratio_of_sums',
+            ],
+
+            // ── Stores (1) ──
+            'orders.stores' => [
+                'version' => 1,
+                'producer' => 'catalog_entity@1',
+                'entity_type' => 'stores',
+                'measure' => 'store_count',
+                'label' => 'Connected stores',
+                'unit' => 'stores',
+                'reducer' => 'count_distinct',
+                'query' => [
+                    'temporal_grains' => ['lifetime'],
+                    'breakdowns' => ['currency'],
+                    'dimensions' => ['currency'],
+                    'filters' => [],
+                ],
+            ],
+
+            // ── Customers (7) ──
+            'customers.source_profiles' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'customer_count',
+                'label' => 'Customer profiles',
+                'unit' => 'profiles',
+                'reducer' => 'count_distinct',
+            ],
+            'customers.canonical_customers' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'canonical_customer_count',
+                'label' => 'Canonical customers',
+                'unit' => 'people',
+                'reducer' => 'count_distinct',
+            ],
+            'customers.customer_spend' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'customer_ltv',
+                'label' => 'Customer spend (LTV)',
+                'unit' => 'currency',
+                'reducer' => 'sum',
+            ],
+            'customers.revenue_per_customer' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'avg_revenue_per_customer',
+                'label' => 'Revenue per customer',
+                'unit' => 'currency_per_customer',
+                'reducer' => 'ratio_of_sums',
+            ],
+            'customers.repeat_buyers' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'repeat_customer_count',
+                'label' => 'Repeat buyers',
+                'unit' => 'people',
+                'reducer' => 'count_distinct',
+            ],
+            'customers.frequent_buyers' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'high_frequency_customer_count',
+                'label' => 'Frequent buyers',
+                'unit' => 'people',
+                'reducer' => 'count_distinct',
+            ],
+            'customers.repeat_buyer_share' => $storeLifetime + [
+                'entity_type' => 'customers',
+                'measure' => 'repeat_buyer_rate',
+                'label' => 'Repeat buyer rate',
+                'unit' => 'ratio',
+                'reducer' => 'ratio_of_sums',
+            ],
+
+            // ── Products (5) ──
+            'products.source_products' => $storeLifetime + [
+                'entity_type' => 'products',
+                'measure' => 'product_count',
+                'label' => 'Synced products',
+                'unit' => 'products',
+                'reducer' => 'count_distinct',
+            ],
+            'products.canonical_products' => $storeLifetime + [
+                'entity_type' => 'products',
+                'measure' => 'canonical_product_count',
+                'label' => 'Canonical products',
+                'unit' => 'products',
+                'reducer' => 'count_distinct',
+            ],
+            'products.mean_list_price' => $storeLifetime + [
+                'entity_type' => 'products',
+                'measure' => 'average_price',
+                'label' => 'Average product price',
+                'unit' => 'currency',
+                'reducer' => 'avg',
+            ],
+            'products.min_list_price' => $storeLifetime + [
+                'entity_type' => 'products',
+                'measure' => 'min_price',
+                'label' => 'Minimum product price',
+                'unit' => 'currency',
+                'reducer' => 'min',
+            ],
+            'products.max_list_price' => $storeLifetime + [
+                'entity_type' => 'products',
+                'measure' => 'max_price',
+                'label' => 'Maximum product price',
+                'unit' => 'currency',
+                'reducer' => 'max',
+            ],
+
+            // ── Promotions (2) ──
+            'promotions.codes' => $storeLifetime + [
+                'entity_type' => 'discounts',
+                'measure' => 'discount_count',
+                'label' => 'Promo codes',
+                'unit' => 'codes',
+                'reducer' => 'count_distinct',
+            ],
+            'promotions.provider_usage_balance' => $storeLifetime + [
+                'entity_type' => 'discounts',
+                'measure' => 'total_usage',
+                'label' => 'Promo code usage balance',
+                'unit' => 'uses',
+                'reducer' => 'sum',
+            ],
+
+            // ── Campaigns (1) ──
+            'campaigns.records' => [
+                'version' => 1,
+                'producer' => 'catalog_entity@1',
+                'entity_type' => 'campaigns',
+                'measure' => 'campaign_count',
+                'label' => 'Synced campaigns',
+                'unit' => 'campaigns',
+                'reducer' => 'count_distinct',
+                'query' => [
+                    'temporal_grains' => ['daily', 'monthly', 'lifetime'],
+                    'breakdowns' => ['status'],
+                    'dimensions' => ['status'],
+                    'filters' => [],
+                ],
+            ],
+
+            // ── Events (2) ──
+            'events.occurrences' => $eventQuery + [
+                'measure' => 'event_occurrence_count',
+                'label' => 'Event occurrences',
+                'unit' => 'events',
+                'reducer' => 'sum',
+            ],
+            'events.observed_types' => $eventQuery + [
+                'measure' => 'distinct_event_names',
+                'label' => 'Distinct event types',
+                'unit' => 'types',
+                'reducer' => 'count_distinct',
+            ],
+        ];
     }
 
     public static function getEnvMapping(): array
