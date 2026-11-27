@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b17eb4963feb23c3877e13c71837202f",
+    "content-hash": "60c0460baec013b97795d824faf0c7b5",
     "packages": [
         {
             "name": "anibalealvarezs/api-client-skeleton",
@@ -124,17 +124,17 @@
         },
         {
             "name": "anibalealvarezs/mailchimp-api",
-            "version": "v1.1.0",
+            "version": "v1.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/anibalealvarezs/mailchimp-api.git",
-                "reference": "a1e76077b0e5fff126e1137877948c67e9d025a0"
+                "reference": "ac9dd39348bca7bdb6ff30b0c6354b668f12d5af"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://satis.anibalalvarez.com/dist/anibalealvarezs/mailchimp-api/anibalealvarezs-mailchimp-api-a1e76077b0e5fff126e1137877948c67e9d025a0-zip-d2b409.zip",
-                "reference": "a1e76077b0e5fff126e1137877948c67e9d025a0",
-                "shasum": "702f84f23d762e6c7e5c7bb67497360a9f63fe56"
+                "url": "https://satis.anibalalvarez.com/dist/anibalealvarezs/mailchimp-api/anibalealvarezs-mailchimp-api-ac9dd39348bca7bdb6ff30b0c6354b668f12d5af-zip-e4310b.zip",
+                "reference": "ac9dd39348bca7bdb6ff30b0c6354b668f12d5af",
+                "shasum": "afba9b9df689c269d85c3f50231f570bf9a4dff3"
             },
             "require": {
                 "anibalealvarezs/api-client-skeleton": "^1.0.0",
@@ -174,10 +174,10 @@
             ],
             "description": "description",
             "support": {
-                "source": "https://github.com/anibalealvarezs/mailchimp-api/tree/v1.1.0",
+                "source": "https://github.com/anibalealvarezs/mailchimp-api/tree/v1.0.1",
                 "issues": "https://github.com/anibalealvarezs/mailchimp-api/issues"
             },
-            "time": "2026-11-05T23:40:12+00:00"
+            "time": "2026-11-27T02:40:29+00:00"
         },
         {
             "name": "anibalealvarezs/oauth-v1",
