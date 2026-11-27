@@ -731,7 +731,8 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
             });
 
             // 4. Sync Campaigns and their Tracked CTA Links (Regular & Automations)
-            $api->getAllCampaignsAndProcess(function ($campaigns) use ($api, $accountId) {
+            $api->getAllCampaignsAndProcess(function ($campaigns) use ($api, $accountId, $config) {
+                $campaigns = array_values(array_filter($campaigns, fn ($campaign) => $this->audienceEnabled((string)($campaign['recipients']['list_id'] ?? ''), $config)));
                 $campaignCollection = MailchimpConvert::campaigns($campaigns, $accountId);
                 if ($this->dataProcessor && $campaignCollection->count() > 0) {
                     ($this->dataProcessor)($campaignCollection, 'campaign');
@@ -752,10 +753,11 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
 
             // 5. Sync Classic Automations / Workflows if present
             try {
-                $api->getAllAutomationsAndProcess(function ($automations) use ($api, $accountId) {
+                $api->getAllAutomationsAndProcess(function ($automations) use ($api, $accountId, $config) {
                     // Normalize automations as campaigns
                     $normalized = [];
                     foreach ($automations as $auto) {
+                        if (!$this->audienceEnabled((string)($auto['recipients']['list_id'] ?? ''), $config)) continue;
                         $auto['type'] = 'automation';
                         $auto['id'] = $auto['id'] ?? '';
                         $auto['settings'] = [
@@ -848,6 +850,9 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
                 // Not all accounts have automations permissions/endpoints
                 $this->logger?->info("Automations activity stream skipped: " . $e->getMessage());
             }
+
+            $allCampaignsToSync = array_values(array_filter($allCampaignsToSync,
+                fn ($campaign) => $this->audienceEnabled((string)($campaign['recipients']['list_id'] ?? ''), $config)));
 
             // Ingest Campaign & Automation Entities into channeled_campaigns
             if (!empty($allCampaignsToSync)) {
@@ -958,10 +963,18 @@ class MailchimpDriver implements SyncDriverInterface, PreAggregationProviderInte
     private function audienceEnabled(string $audienceId, array $config): bool
     {
         $channel = $config['channels']['mailchimp'] ?? $config;
+        if (filter_var($channel['sync_paused_assets'][$audienceId] ?? false, FILTER_VALIDATE_BOOLEAN)) return false;
         if (!array_key_exists('audiences', $channel)) return true;
+        $selected = (string)($config['account_id'] ?? '');
+        if ($selected !== '') {
+            foreach ($channel['audiences'] as $audience) {
+                $id = is_array($audience) ? (string)($audience['id'] ?? '') : (string)$audience;
+                if ($id === $selected && $audienceId !== $selected) return false;
+            }
+        }
         foreach ($channel['audiences'] as $audience) {
             $id = is_array($audience) ? (string)($audience['id'] ?? '') : (string)$audience;
-            if ($id === $audienceId && (!is_array($audience) || ($audience['enabled'] ?? true))) return true;
+            if ($id === $audienceId && (!is_array($audience) || filter_var($audience['enabled'] ?? true, FILTER_VALIDATE_BOOLEAN))) return true;
         }
         return false;
     }

@@ -155,6 +155,70 @@ class MailchimpDriverTest extends TestCase
         self::assertSame(['account', 'store', 'order', 'store', 'order'], $types);
     }
 
+    public function testCampaignEntitySyncSkipsPausedAndDisabledAudiences(): void
+    {
+        $auth = new MailchimpAuthProvider($this->tempTokenPath);
+        $auth->storeAccountCredentials('account', ['api_key' => 'fixture-us1']);
+        $api = $this->createMock(\Anibalealvarezs\MailchimpApi\Services\Marketing\MarketingApi::class);
+        $api->method('getAllCampaignsAndProcess')->willReturnCallback(static function (callable $callback): void {
+            $callback([
+                ['id' => 'allowed-campaign', 'recipients' => ['list_id' => 'allowed']],
+                ['id' => 'paused-campaign', 'recipients' => ['list_id' => 'paused']],
+                ['id' => 'disabled-campaign', 'recipients' => ['list_id' => 'disabled']],
+            ]);
+        });
+        $api->expects(self::once())->method('getAllClickDetailsAndProcess')->with('allowed-campaign', self::isType('callable'));
+        $api->method('getAllAutomationsAndProcess')->willReturnCallback(static function (callable $callback): void {
+            $callback([['id' => 'paused-workflow', 'recipients' => ['list_id' => 'paused']]]);
+        });
+        $driver = $this->getMockBuilder(MailchimpDriver::class)->setConstructorArgs([$auth])->onlyMethods(['getApi'])->getMock();
+        $driver->method('getApi')->willReturn($api);
+        $campaigns = [];
+        $driver->setDataProcessor(static function ($records, string $type) use (&$campaigns): void {
+            if ($type === 'campaign') foreach ($records as $record) $campaigns[] = $record->getPlatformId();
+        });
+        $driver->sync(new \DateTime('2026-11-01'), new \DateTime('2026-11-02'), [
+            'entity' => 'entities', 'audiences' => [['id' => 'allowed', 'enabled' => true], ['id' => 'paused', 'enabled' => true], ['id' => 'disabled', 'enabled' => 'false']],
+            'sync_paused_assets' => ['paused' => true],
+        ]);
+        self::assertSame(['allowed-campaign'], $campaigns);
+    }
+
+    public function test_campaign_activity_sync_skips_paused_and_disabled_audiences(): void
+    {
+        $auth = new MailchimpAuthProvider($this->tempTokenPath);
+        $auth->storeAccountCredentials('account', ['api_key' => 'fixture-us1']);
+        $api = $this->createMock(\Anibalealvarezs\MailchimpApi\Services\Marketing\MarketingApi::class);
+        $api->method('getAllCampaigns')->willReturn(['campaigns' => [
+            ['id' => 'allowed-campaign', 'recipients' => ['list_id' => 'allowed']],
+            ['id' => 'paused-campaign', 'recipients' => ['list_id' => 'paused']],
+            ['id' => 'disabled-campaign', 'recipients' => ['list_id' => 'disabled']],
+        ]]);
+        $api->expects(self::once())->method('getAllEmailActivityAndProcess')->with('allowed-campaign', self::isType('callable'));
+        $driver = $this->getMockBuilder(MailchimpDriver::class)->setConstructorArgs([$auth])->onlyMethods(['getApi'])->getMock();
+        $driver->method('getApi')->willReturn($api);
+        $campaigns = [];
+        $driver->setDataProcessor(static function ($records, string $type) use (&$campaigns): void {
+            if ($type === 'campaign') foreach ($records as $record) $campaigns[] = $record->getPlatformId();
+        });
+        $driver->sync(new \DateTime('2026-11-01'), new \DateTime('2026-11-02'), [
+            'audiences' => [['id' => 'allowed', 'enabled' => true], ['id' => 'paused', 'enabled' => true], ['id' => 'disabled', 'enabled' => 'false']],
+            'sync_paused_assets' => ['paused' => true],
+        ]);
+        self::assertSame(['allowed-campaign'], $campaigns);
+    }
+
+    public function testGranularAudienceScopeDoesNotIncludeOtherEnabledAudiences(): void
+    {
+        $driver = new MailchimpDriver(new MailchimpAuthProvider($this->tempTokenPath));
+        $method = new \ReflectionMethod(MailchimpDriver::class, 'audienceEnabled');
+        $config = ['account_id' => 'selected', 'audiences' => [['id' => 'selected', 'enabled' => true], ['id' => 'other', 'enabled' => true]]];
+        self::assertTrue($method->invoke($driver, 'selected', $config));
+        self::assertFalse($method->invoke($driver, 'other', $config));
+        $config['sync_paused_assets'] = ['selected' => true];
+        self::assertFalse($method->invoke($driver, 'selected', $config));
+    }
+
     public function testStoreCredentialsUnpacksMultiAccountPayload(): void
     {
         putenv('MAILCHIMP_TOKEN_PATH=' . $this->tempTokenPath);
